@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>App de Contagem v1.8</title>
+<style>
+  :root{
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --card-bg:        #ffffff;
+
+    --series-1: #2a78d6; /* blue */
+    --series-2: #eb6834; /* orange */
+    --series-3: #1baf7a; /* aqua */
+    --series-4: #eda100; /* yellow */
+    --series-5: #e87ba4; /* magenta */
+    --series-6: #008300; /* green */
+    --series-7: #4a3aa7; /* violet */
+    --series-8: #e34948; /* red */
+
+    --good: #0ca30c;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --card-bg:        #232322;
+
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --series-5: #d55181;
+      --series-6: #008300;
+      --series-7: #9085e9;
+      --series-8: #e66767;
+
+      --good: #0ca30c;
+      --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --card-bg:        #232322;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+
+    --good: #0ca30c;
+    --critical: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Barra de sistema no topo — nome do app, versão e status de sincronização sempre
+     visíveis, como uma barra de título de software, em vez de um título solto na página. */
+  .appbar {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 11px 16px;
+    padding-top: calc(11px + env(safe-area-inset-top, 0px));
+  }
+  .appbar-inner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; max-width: 900px; margin: 0 auto; }
+  .appbar-title { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+  .appbar-version { font-size: 10px; font-weight: 700; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; }
+  .appbar-ambiente { margin-left: auto; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 2px; white-space: nowrap; }
+  .appbar-ambiente.producao { background: color-mix(in srgb, var(--series-1) 18%, transparent); color: var(--series-1); }
+  .appbar-ambiente.pesquisa { background: color-mix(in srgb, var(--series-2) 18%, transparent); color: var(--series-2); }
+  .appbar-sync { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+  .appbar-user { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+  #ambienteSwitch button { font-size: 10px; padding: 5px 9px; }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+  /* ====================== Login / Administração (telas de overlay) ====================== */
+  /* Qualquer elemento com o atributo "hidden" fica mesmo escondido, mesmo quando
+     a classe dele também define "display" (ex.: display:flex) — sem isso, a regra
+     de display da classe ganha da regra padrão do navegador pro atributo hidden. */
+  [hidden] { display: none !important; }
+
+  .login-overlay {
+    position: fixed; inset: 0; z-index: 50; background: var(--page-plane);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    overflow-y: auto;
+  }
+  .login-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 24px; width: 100%; max-width: 340px;
+  }
+  .login-card.admin-card { max-width: 560px; position: relative; }
+  .login-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .login-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 16px; }
+  .login-error { font-size: 12px; color: var(--critical); margin: 4px 0 12px; }
+  #loginLoading { color: var(--text-muted); font-size: 13px; text-align: center; }
+
+  .admin-close { position: absolute; top: 18px; right: 18px; }
+  .admin-new-row { display:flex; gap:6px; flex-wrap: wrap; align-items:center; margin-top: 4px; }
+  .admin-new-row input[type=text], .admin-new-row input[type=password] { flex: 1 1 110px; width: auto; }
+  .admin-new-row select { flex: 1 1 100px; width: auto; }
+  .admin-adm-check { display:flex; align-items:center; gap:5px; font-size: 12px; margin: 0; text-transform: none; letter-spacing: 0; }
+  .admin-adm-check input { width: auto; margin: 0; }
+
+  .admin-users-list { display:flex; flex-direction:column; gap:0; margin-top: 18px; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
+  .admin-user-row { padding: 10px; border-bottom: 1px solid var(--border); }
+  .admin-user-row:last-child { border-bottom: none; }
+  .admin-user-main { display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
+  .admin-user-name { font-weight: 600; font-size: 13px; flex: 1 1 auto; }
+  .admin-user-ambiente { width: auto; font-size: 12px; padding: 5px 7px; }
+  .admin-user-actions { display:flex; gap:6px; margin-top: 6px; }
+  .admin-user-senha-box { display:flex; gap:6px; margin-top: 8px; }
+  .admin-user-senha-box input { flex: 1; }
+  .badge-adm { background: color-mix(in srgb, var(--series-6) 18%, transparent); color: var(--series-6); margin-left: 6px; }
+
+  .subtitle { color: var(--text-secondary); font-size: 12px; margin: 0 0 14px; }
+
+  .sync-line { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size: 12px; color: var(--text-secondary); margin: 0 0 16px; }
+  .sync-line button { font-size: 11px; padding: 4px 9px; }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px 16px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 11px;
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-secondary);
+    font-weight: 700;
+  }
+  .card h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+
+  label { display:block; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+  select, input[type=text], input[type=date], input[type=number] {
+    width: 100%;
+    font-size: 15px;
+    padding: 9px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-family: inherit;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 140px; min-width: 0; }
+  .field { margin-bottom: 10px; }
+
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--series-1); color: #fff; width: 100%; padding: 12px; font-size: 14px; }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-secondary { background: transparent; color: var(--series-1); border: 1px solid var(--series-1); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); font-weight: 500; font-size: 11px; padding: 6px 10px; }
+  .btn-danger-ghost { background: transparent; color: var(--critical); border: none; font-weight: 500; font-size: 12px; padding: 4px 8px; cursor:pointer; }
+  .btn-danger-secondary { background: transparent; color: var(--critical); border: 1px solid var(--critical); }
+  .btn-danger-secondary:disabled { opacity: .4; cursor: not-allowed; }
+
+  .toggle-group { display: inline-flex; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+  .toggle-group button { border-radius: 0; background: var(--surface-1); color: var(--text-secondary); font-size: 12px; padding: 7px 14px; }
+  .toggle-group button.active { background: var(--series-1); color: #fff; }
+  .toggle-group button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .ensaio-bar { display:flex; gap:10px; align-items:flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+  .ensaio-bar .field { flex: 1 1 220px; margin-bottom: 0; }
+
+  .empty { color: var(--text-muted); font-size: 13px; padding: 18px 4px; text-align: center; }
+
+  .linha-list { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+  .linha-item { display:flex; align-items:center; gap:8px; padding: 8px 10px; background: var(--card-bg); border-bottom: 1px solid var(--border); font-size: 13px; }
+  .linha-item:last-child { border-bottom: none; }
+  .dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .linha-name { font-weight: 600; flex: 1; }
+  .linha-meta { color: var(--text-muted); font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-muted); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; background: var(--surface-1); }
+  .table-scroll { overflow-x: auto; }
+
+  .series-picker { display:flex; flex-direction:column; gap:0; max-height: 220px; overflow-y:auto; border:1px solid var(--border); border-radius:3px; }
+  .series-check { display:flex; align-items:center; gap:8px; font-size:13px; padding:7px 8px; cursor:pointer; user-select:none; border-bottom: 1px solid var(--border); }
+  .series-check:last-child { border-bottom: none; }
+  .series-check:hover { background: var(--surface-1); }
+  .series-check input[type=checkbox] { width:auto; margin:0; accent-color: var(--series-1); flex:none; }
+  .series-swatch { width:12px; height:12px; border-radius:2px; flex:none; }
+  .series-check-empty { color: var(--text-muted); font-size:13px; padding: 8px 4px; }
+
+  .chart-wrap { position: relative; height: 320px; }
+
+  .export-row { display:flex; gap:8px; flex-wrap: wrap; }
+  .export-row button { flex: 1 1 180px; }
+  .export-status { color: var(--text-muted); font-size: 12px; margin-top: 8px; min-height: 14px; }
+
+  .details { margin-top: 10px; }
+  .details summary { cursor: pointer; font-size: 13px; color: var(--series-1); font-weight: 600; }
+
+  .savebar { display:flex; gap:8px; margin-top: 8px; }
+  .savebar > button:first-child { flex: 2; }
+  .savebar > button:last-child { flex: 1; }
+
+  .badge { display:inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 2px; letter-spacing: .02em; }
+  .badge-femea { background: color-mix(in srgb, var(--series-1) 18%, transparent); color: var(--series-1); }
+  .badge-macho { background: color-mix(in srgb, var(--series-2) 18%, transparent); color: var(--series-2); }
+
+  .btn-confirm-del { background: var(--critical) !important; color: #fff !important; border-color: var(--critical) !important; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateY(20px);
+    max-width: calc(100vw - 32px);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 11px 16px;
+    font-size: 13px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+    z-index: 1000;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.error { border-color: var(--critical); color: var(--critical); }
+  #toast.good { border-color: var(--good); color: var(--good); }
+</style>
+</head>
+<body>
+
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <div class="login-title">App de Contagem</div>
+
+    <div id="loginSetupBox" hidden>
+      <p class="login-sub">Primeiro acesso neste sistema — crie o login de administrador.</p>
+      <div class="field">
+        <label for="setupUser">Usuário</label>
+        <input type="text" id="setupUser" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="setupPass">Senha</label>
+        <input type="password" id="setupPass" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label for="setupPass2">Confirmar senha</label>
+        <input type="password" id="setupPass2" autocomplete="new-password" />
+      </div>
+      <div id="setupError" class="login-error" hidden></div>
+      <button class="btn-primary" id="btnSetupAdmin" type="button">Criar acesso de administrador</button>
+    </div>
+
+    <div id="loginFormBox" hidden>
+      <p class="login-sub">Entre com seu usuário e senha.</p>
+      <div class="field">
+        <label for="loginUser">Usuário</label>
+        <input type="text" id="loginUser" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="loginPass">Senha</label>
+        <input type="password" id="loginPass" autocomplete="current-password" />
+      </div>
+      <div id="loginError" class="login-error" hidden></div>
+      <button class="btn-primary" id="btnLoginEntrar" type="button">Entrar</button>
+    </div>
+
+    <div id="loginLoading">Carregando…</div>
+  </div>
+</div>
+
+<div id="adminOverlay" class="login-overlay" hidden>
+  <div class="login-card admin-card">
+    <button class="btn-ghost admin-close" id="btnFecharAdmin" type="button">Fechar</button>
+    <div class="login-title">Administração de usuários</div>
+    <p class="login-sub">Crie um login para cada pessoa e escolha em qual ambiente ela trabalha.</p>
+
+    <div class="field">
+      <label>Novo usuário</label>
+      <div class="admin-new-row">
+        <input type="text" id="adminNovoUser" placeholder="usuário" autocomplete="off" />
+        <input type="password" id="adminNovoSenha" placeholder="senha" autocomplete="new-password" />
+        <select id="adminNovoAmbiente">
+          <option value="pesquisa">Pesquisa</option>
+          <option value="producao">Produção</option>
+        </select>
+        <label class="admin-adm-check"><input type="checkbox" id="adminNovoAdm" /> Administrador</label>
+        <button class="btn-primary" id="btnAdminAdicionar" type="button">Adicionar</button>
+      </div>
+      <div id="adminNovoError" class="login-error" hidden></div>
+    </div>
+
+    <div id="adminUsersList" class="admin-users-list"></div>
+  </div>
+</div>
+
+<div id="appShell" hidden>
+<div class="appbar">
+  <div class="appbar-inner">
+    <span class="appbar-title">App de Contagem</span>
+    <span class="appbar-version">v1.8</span>
+    <div class="toggle-group" id="ambienteSwitch" hidden>
+      <button id="btnAmbienteProducao" class="active" type="button">Produção</button>
+      <button id="btnAmbientePesquisa" type="button">Pesquisa</button>
+    </div>
+    <span class="appbar-ambiente" id="appbarAmbiente" hidden></span>
+    <span class="appbar-sync" id="syncStatusText">⚪ Local</span>
+    <span class="appbar-user" id="appbarUser"></span>
+    <button class="btn-ghost" id="btnAdministracao" type="button" hidden>⚙ Administração</button>
+    <button class="btn-ghost" id="btnSair" type="button">Sair</button>
+  </div>
+</div>
+<div class="wrap">
+  <p class="subtitle">Lance as contagens de florescimento em campo e veja o gráfico de splits atualizar sozinho.</p>
+  <div class="sync-line">
+    <button class="btn-ghost" id="btnSyncNow" type="button">🔄 Sincronizar agora</button>
+    <span id="syncNowStatus"></span>
+  </div>
+
+  <div class="card">
+    <div class="ensaio-bar">
+      <div class="field">
+        <label for="ensaioSelect">Ensaio de florescimento</label>
+        <select id="ensaioSelect"><option value="">Carregando…</option></select>
+      </div>
+      <button class="btn-secondary" id="btnNovoEnsaio" type="button">+ Novo ensaio</button>
+      <button class="btn-danger-secondary" id="btnExcluirEnsaio" type="button" disabled>Excluir ensaio</button>
+    </div>
+    <div id="novoEnsaioForm" hidden>
+      <div class="field">
+        <label for="novoEnsaioNome">Nome do ensaio (ex.: W6 2026)</label>
+        <input type="text" id="novoEnsaioNome" placeholder="W7 2026" />
+      </div>
+      <div class="savebar">
+        <button class="btn-primary" id="btnSalvarEnsaio" type="button">Criar ensaio</button>
+        <button class="btn-ghost" id="btnCancelarEnsaio" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+
+    <div class="card">
+      <h2>Lançar contagem</h2>
+      <div class="field">
+        <label for="contLinha">Fêmea / macho</label>
+        <select id="contLinha"></select>
+      </div>
+      <div class="field" id="contTipoFlorField" hidden>
+        <label for="contTipoFlor">Tipo de florescimento</label>
+        <select id="contTipoFlor">
+          <option value="Masculino">Florescimento Masculino</option>
+          <option value="Feminino">Florescimento Feminino</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="contData">Data da contagem</label>
+          <input type="date" id="contData" />
+        </div>
+        <div class="field">
+          <label for="contValor">Contagem (plantas florescidas)</label>
+          <input type="number" id="contValor" min="0" step="1" inputmode="numeric" placeholder="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="contQuem">Lançado por (opcional)</label>
+        <input type="text" id="contQuem" placeholder="seu nome" />
+      </div>
+      <button class="btn-primary" id="btnSalvarContagem" type="button">Salvar contagem</button>
+    </div>
+
+    <div class="card">
+      <h2>Fêmeas e machos deste ensaio</h2>
+      <div id="linhaList" class="linha-list"></div>
+
+      <details class="details">
+        <summary>+ Adicionar fêmea</summary>
+        <div style="margin-top:10px;">
+          <p class="linha-meta" style="margin:-4px 0 10px;">Pode adicionar quantas fêmeas quiser neste ensaio.</p>
+          <div class="field">
+            <label for="novaFemeaNome">Genótipo</label>
+            <input type="text" id="novaFemeaNome" placeholder="SC11312" />
+          </div>
+          <div class="field">
+            <label for="novaFemeaPlantio">Data de plantio (obrigatória)</label>
+            <input type="date" id="novaFemeaPlantio" />
+          </div>
+          <button class="btn-primary" id="btnSalvarFemea" type="button">Adicionar fêmea</button>
+        </div>
+      </details>
+
+      <details class="details" style="margin-top:10px;">
+        <summary>+ Adicionar macho</summary>
+        <div style="margin-top:10px;">
+          <p id="novaMachoHint" class="linha-meta" style="margin:-4px 0 10px;">Vai criar automaticamente Macho 1, Macho 2 e Macho 3 com esse genótipo. Só é permitido 1 macho por ensaio.</p>
+          <p id="novaMachoBlocked" class="linha-meta" style="margin:-4px 0 10px; color:var(--critical);" hidden>Este ensaio já tem um macho cadastrado. Exclua as repetições existentes na lista acima antes de cadastrar outro.</p>
+          <div class="field">
+            <label for="novaMachoNome">Genótipo</label>
+            <input type="text" id="novaMachoNome" placeholder="SA2821-01Pro3" />
+          </div>
+          <p class="linha-meta" style="margin:0 0 6px;">Data de plantio de cada macho (opcional — necessária p/ ver por DAP; pode ser diferente em cada um)</p>
+          <div class="row">
+            <div class="field">
+              <label for="novaMachoPlantio1"><strong>Macho 1</strong></label>
+              <input type="date" id="novaMachoPlantio1" />
+            </div>
+            <div class="field">
+              <label for="novaMachoPlantio2"><strong>Macho 2</strong></label>
+              <input type="date" id="novaMachoPlantio2" />
+            </div>
+            <div class="field">
+              <label for="novaMachoPlantio3"><strong>Macho 3</strong></label>
+              <input type="date" id="novaMachoPlantio3" />
+            </div>
+          </div>
+          <button class="btn-primary" id="btnSalvarMacho" type="button">Adicionar macho</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>Gráfico de splits</h2>
+      <div class="toggle-group" role="group" aria-label="Eixo do gráfico">
+        <button id="btnEixoData" class="active" type="button">Data</button>
+        <button id="btnEixoDap" type="button">DAP</button>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+          <label style="margin:0;">O que mostrar no gráfico</label>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-ghost" id="btnMarcarTodas" type="button">Marcar todas</button>
+            <button class="btn-ghost" id="btnDesmarcarTodas" type="button">Desmarcar todas</button>
+          </div>
+        </div>
+        <div id="seriesPicker" class="series-picker"></div>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+        <div id="chartEmpty" class="empty" hidden>Lance pelo menos uma contagem para ver o gráfico.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Exportar</h2>
+      <div class="export-row">
+        <button class="btn-ghost" id="btnBaixarGrafico" type="button">Baixar gráfico (PNG)</button>
+        <button class="btn-ghost" id="btnBaixarExcel" type="button">Baixar tudo (Excel: contagens + gráfico)</button>
+      </div>
+      <div id="exportStatus" class="export-status"></div>
+    </div>
+
+    <details class="details">
+      <summary>Ver tabela de contagens lançadas</summary>
+      <div class="card table-scroll" style="margin-top:10px;">
+        <table>
+          <thead>
+            <tr><th>Fêmea/Macho</th><th>Tipo</th><th>Data</th><th>Contagem</th><th>Por</th><th></th></tr>
+          </thead>
+          <tbody id="contTableBody"></tbody>
+        </table>
+        <div id="contTableEmpty" class="empty" hidden>Nenhuma contagem lançada ainda.</div>
+      </div>
+    </details>
+
+  </div>
+</div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ====================== Chart.js (com fallback de CDN) ====================== */
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("load failed: " + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  var chartLib = { ready: false, failed: false };
+  function ensureChartLib() {
+    if (window.Chart) { chartLib.ready = true; return Promise.resolve(); }
+    return loadScript("https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js")
+      .catch(function () {
+        return loadScript("https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js");
+      })
+      .then(function () { chartLib.ready = true; })
+      .catch(function (err) {
+        console.error("Chart.js failed to load", err);
+        chartLib.failed = true;
+      });
+  }
+  var chartLibPromise = ensureChartLib().then(function () { renderChart(); });
+
+  var SERIES_COLORS = ["--series-1","--series-2","--series-3","--series-4","--series-5","--series-6","--series-7","--series-8"];
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  function colorForIndex(i) {
+    return cssVar(SERIES_COLORS[i % SERIES_COLORS.length]);
+  }
+  function todayISO() {
+    var d = new Date();
+    var tz = d.getTimezoneOffset() * 60000;
+    return new Date(d - tz).toISOString().slice(0, 10);
+  }
+  function parseISODate(s) {
+    if (!s) return null;
+    var p = String(s).split("-");
+    if (p.length !== 3) return null;
+    return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  }
+  function fmtDateShort(iso) {
+    var d = parseISODate(iso);
+    if (!d) return iso || "";
+    var dd = String(d.getUTCDate()).padStart(2, "0");
+    var mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    return dd + "/" + mm;
+  }
+  function daysBetween(a, b) {
+    return Math.round((b - a) / 86400000);
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function uid() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ("id" + Date.now() + "_" + Math.random().toString(36).slice(2));
+  }
+
+  var toastTimer = null;
+  function showToast(msg, type) {
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = type || "";
+    void t.offsetWidth;
+    t.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3400);
+  }
+
+  function wireConfirmDelete(btn, label, onConfirm) {
+    var confirming = false;
+    var revertTimer = null;
+    btn.textContent = label;
+    btn.addEventListener("click", function () {
+      if (!confirming) {
+        confirming = true;
+        btn.textContent = "confirmar exclusão?";
+        btn.classList.add("btn-confirm-del");
+        revertTimer = setTimeout(function () {
+          confirming = false;
+          btn.textContent = label;
+          btn.classList.remove("btn-confirm-del");
+        }, 4000);
+        return;
+      }
+      clearTimeout(revertTimer);
+      btn.disabled = true;
+      onConfirm();
+    });
+    return function reset() {
+      confirming = false;
+      clearTimeout(revertTimer);
+      btn.textContent = label;
+      btn.classList.remove("btn-confirm-del");
+      btn.disabled = false;
+    };
+  }
+
+  /* ====================== Usuários / Login / Ambientes ======================
+     Login simples por usuário+senha (sem o SDK de Authentication do Firebase,
+     pela mesma razão do resto da sincronização): cada usuário é um documento
+     na coleção app_contagem_usuarios, com a senha guardada como hash (nunca
+     em texto puro) e um campo "ambiente" (produção/pesquisa) que só o
+     administrador pode mudar. Isso NÃO é segurança de nível bancário — é só
+     o suficiente pra separar os dados dos dois ambientes e evitar que
+     qualquer um entre sem saber usuário/senha. */
+
+  function sha256Hex(str) {
+    if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest && window.TextEncoder) {
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(str)).then(function (buf) {
+        return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      }).catch(function () { return simpleHash(str); });
+    }
+    return Promise.resolve(simpleHash(str));
+  }
+  function simpleHash(str) {
+    // Reserva (não-criptográfica) só pra quando o navegador não tem Web Crypto disponível.
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return "fb_" + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+  }
+  function slugUsername(s) {
+    return (s || "").toString().trim().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  var USERS_CACHE_KEY = "appContagemUsuariosCacheV1";
+  var SESSION_KEY = "appContagemSessaoV1";
+  var ADM_AMBIENTE_KEY = "appContagemAdmAmbienteV1";
+  var usersCache = [];
+
+  // O app é pensado pro celular e pra funcionar sem internet: criar/editar/excluir
+  // usuário (como qualquer outra coisa no app) salva na hora neste aparelho e só
+  // tenta mandar pra nuvem em segundo plano, com retry — nunca trava esperando
+  // conexão. Mesmo esquema de "pendências" já usado pros ensaios.
+  var USERS_PENDING_PUSH_KEY = "appContagemUsuariosPendentesV1";
+  var USERS_PENDING_DELETE_KEY = "appContagemUsuariosExcluirPendenteV1";
+  var usersPendingPush = {};   // slug -> true (criado/editado aqui, ainda não confirmado na nuvem)
+  var usersPendingDelete = []; // slugs excluídos aqui, ainda não confirmados na nuvem
+
+  function loadUsersCache() {
+    try { usersCache = JSON.parse(localStorage.getItem(USERS_CACHE_KEY) || "[]"); } catch (e) { usersCache = []; }
+    try { usersPendingPush = JSON.parse(localStorage.getItem(USERS_PENDING_PUSH_KEY) || "{}"); } catch (e) { usersPendingPush = {}; }
+    try { usersPendingDelete = JSON.parse(localStorage.getItem(USERS_PENDING_DELETE_KEY) || "[]"); } catch (e) { usersPendingDelete = []; }
+  }
+  function saveUsersCache() {
+    try { localStorage.setItem(USERS_CACHE_KEY, JSON.stringify(usersCache)); } catch (e) {}
+  }
+  function saveUsersPendingPush() {
+    try { localStorage.setItem(USERS_PENDING_PUSH_KEY, JSON.stringify(usersPendingPush)); } catch (e) {}
+  }
+  function saveUsersPendingDelete() {
+    try { localStorage.setItem(USERS_PENDING_DELETE_KEY, JSON.stringify(usersPendingDelete)); } catch (e) {}
+  }
+  function findUserBySlug(slug) {
+    return usersCache.find(function (u) { return u.id === slug; }) || null;
+  }
+  function hasAnyAdminLocal() {
+    return usersCache.some(function (u) { return u.role === "adm"; });
+  }
+
+  // Salva o usuário NESTE APARELHO imediatamente (a pessoa já consegue usar o
+  // login na hora) e tenta mandar pra nuvem; se não der (sem internet), fica
+  // marcado como pendente e a próxima sincronização tenta de novo sozinha.
+  function saveUserLocalAndPush(userDoc) {
+    usersCache = usersCache.filter(function (u) { return u.id !== userDoc.id; });
+    usersCache.push(userDoc);
+    saveUsersCache();
+    usersPendingPush[userDoc.id] = true;
+    saveUsersPendingPush();
+    return pushUserDocNow(userDoc.id);
+  }
+  function pushUserDocNow(slug) {
+    var u = findUserBySlug(slug);
+    if (!u) { delete usersPendingPush[slug]; saveUsersPendingPush(); return Promise.resolve(); }
+    return ensureFirebaseReady().then(function () { return fbSetDoc(USERS_COL + "/" + slug, userDocPayload(u)); })
+      .then(function () {
+        delete usersPendingPush[slug];
+        saveUsersPendingPush();
+      })
+      .catch(function (err) {
+        console.warn("Usuário salvo neste aparelho; vou sincronizar com a nuvem quando a internet voltar:", err);
+        // continua pendente de propósito — a próxima sincronização tenta de novo.
+      });
+  }
+  function deleteUserLocalAndPush(slug) {
+    delete usersPendingPush[slug];
+    saveUsersPendingPush();
+    usersCache = usersCache.filter(function (u) { return u.id !== slug; });
+    saveUsersCache();
+    if (usersPendingDelete.indexOf(slug) === -1) usersPendingDelete.push(slug);
+    saveUsersPendingDelete();
+    return ensureFirebaseReady().then(function () { return fbDeleteDoc(USERS_COL + "/" + slug); }).then(function () {
+      usersPendingDelete = usersPendingDelete.filter(function (x) { return x !== slug; });
+      saveUsersPendingDelete();
+    }).catch(function (err) { console.warn("Erro ao excluir usuário na nuvem (vai tentar de novo):", err); });
+  }
+
+  function syncUsersNow() {
+    return ensureFirebaseReady().then(function () {
+      var deletes = usersPendingDelete.slice();
+      return Promise.all(deletes.map(function (slug) {
+        return fbDeleteDoc(USERS_COL + "/" + slug).then(function () {
+          usersPendingDelete = usersPendingDelete.filter(function (x) { return x !== slug; });
+          saveUsersPendingDelete();
+        }).catch(function () {});
+      })).then(function () { return fbListCollection(USERS_COL); });
+    }).then(function (remoteList) {
+      remoteList = remoteList.filter(function (u) { return usersPendingDelete.indexOf(u.id) === -1; });
+      var remoteById = {};
+      remoteList.forEach(function (u) { remoteById[u.id] = u; });
+      var localById = {};
+      usersCache.forEach(function (u) { localById[u.id] = u; });
+
+      var merged = [];
+      remoteList.forEach(function (ru) {
+        // Se este aparelho tem uma edição local ainda não confirmada na nuvem,
+        // mantém a versão local em vez de sobrescrever com o que veio de lá.
+        merged.push((usersPendingPush[ru.id] && localById[ru.id]) ? localById[ru.id] : ru);
+      });
+      usersCache.forEach(function (u) {
+        if (!remoteById[u.id] && usersPendingDelete.indexOf(u.id) === -1) {
+          merged.push(u);
+          usersPendingPush[u.id] = true; // ainda não existe na nuvem — precisa ser enviado
+        }
+      });
+
+      usersCache = merged;
+      saveUsersCache();
+      saveUsersPendingPush();
+      var adminOverlay = document.getElementById("adminOverlay");
+      if (adminOverlay && !adminOverlay.hidden) renderAdminUsersList();
+
+      Object.keys(usersPendingPush).forEach(function (slug) { pushUserDocNow(slug); });
+
+      return usersCache;
+    });
+  }
+
+  function saveSession() { try { localStorage.setItem(SESSION_KEY, JSON.stringify(state.usuario)); } catch (e) {} }
+  function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { return null; } }
+  function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch (e) {} }
+  function loadAdmAmbientePref() { try { return localStorage.getItem(ADM_AMBIENTE_KEY) || null; } catch (e) { return null; } }
+  function saveAdmAmbientePref(a) { try { localStorage.setItem(ADM_AMBIENTE_KEY, a); } catch (e) {} }
+
+  function userDocPayload(u) {
+    return { username: u.username, senhaHash: u.senhaHash, role: u.role, ambiente: u.ambiente || "producao", createdAt: u.createdAt || Date.now() };
+  }
+
+  function attemptLogin(slug, pass) {
+    return sha256Hex(pass).then(function (hash) {
+      var user = findUserBySlug(slug);
+      if (user) {
+        if (user.senhaHash !== hash) throw new Error("Usuário ou senha incorretos.");
+        return user;
+      }
+      if (navigator.onLine === false) throw new Error("Usuário não encontrado neste aparelho (sem internet pra conferir na nuvem).");
+      return syncUsersNow().then(function () {
+        var u2 = findUserBySlug(slug);
+        if (!u2 || u2.senhaHash !== hash) throw new Error("Usuário ou senha incorretos.");
+        return u2;
+      }).catch(function (err) {
+        if (err instanceof Error && err.message === "Usuário ou senha incorretos.") throw err;
+        throw new Error("Usuário ou senha incorretos.");
+      });
+    });
+  }
+
+  function doLogin(user) {
+    state.usuario = { username: user.username, role: user.role, ambiente: user.ambiente || "producao" };
+    saveSession();
+    state.ambiente = state.usuario.role === "adm" ? (loadAdmAmbientePref() || "pesquisa") : state.usuario.ambiente;
+    enterApp();
+  }
+
+  function doLogout() {
+    clearSession();
+    state.usuario = null;
+    state.ensaioId = null;
+    if (chart) { chart.destroy(); chart = null; }
+    document.getElementById("appShell").hidden = true;
+    document.getElementById("adminOverlay").hidden = true;
+    document.getElementById("loginUser").value = "";
+    document.getElementById("loginPass").value = "";
+    showLoginScreen();
+  }
+
+  function enterApp() {
+    document.getElementById("loginOverlay").hidden = true;
+    document.getElementById("appShell").hidden = false;
+    renderUserBar();
+    loadData();
+    loadPendingDeletes();
+    try { state.ensaioId = localStorage.getItem(selectedKey()) || null; } catch (e) {}
+    renderEnsaioSelect();
+    initFirebaseSync();
+  }
+
+  function renderUserBar() {
+    var u = state.usuario;
+    if (!u) return;
+    document.getElementById("appbarUser").textContent = "👤 " + u.username;
+    var isAdm = u.role === "adm";
+    document.getElementById("btnAdministracao").hidden = !isAdm;
+    document.getElementById("ambienteSwitch").hidden = !isAdm;
+    var badge = document.getElementById("appbarAmbiente");
+    badge.hidden = isAdm;
+    if (!isAdm) {
+      badge.textContent = state.ambiente === "pesquisa" ? "Pesquisa" : "Produção";
+      badge.className = "appbar-ambiente " + state.ambiente;
+    } else {
+      document.getElementById("btnAmbienteProducao").classList.toggle("active", state.ambiente === "producao");
+      document.getElementById("btnAmbientePesquisa").classList.toggle("active", state.ambiente === "pesquisa");
+    }
+  }
+
+  function switchAmbiente(amb) {
+    if (state.ambiente === amb) return;
+    state.ambiente = amb;
+    saveAdmAmbientePref(amb);
+    renderUserBar();
+    if (chart) { chart.destroy(); chart = null; }
+    loadData();
+    loadPendingDeletes();
+    try { state.ensaioId = localStorage.getItem(selectedKey()) || null; } catch (e) {}
+    renderEnsaioSelect();
+    setSyncStatus("connecting");
+    syncNow({ silent: true }).catch(function () {});
+  }
+  document.getElementById("btnAmbienteProducao").addEventListener("click", function () { switchAmbiente("producao"); });
+  document.getElementById("btnAmbientePesquisa").addEventListener("click", function () { switchAmbiente("pesquisa"); });
+  document.getElementById("btnSair").addEventListener("click", function () { doLogout(); });
+
+  function wireEnterSubmit(inputIds, btnId) {
+    inputIds.forEach(function (id) {
+      document.getElementById(id).addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); document.getElementById(btnId).click(); }
+      });
+    });
+  }
+
+  function showLoginScreen() {
+    document.getElementById("loginOverlay").hidden = false;
+    document.getElementById("loginLoading").hidden = false;
+    document.getElementById("loginSetupBox").hidden = true;
+    document.getElementById("loginFormBox").hidden = true;
+    var show = function () {
+      document.getElementById("loginLoading").hidden = true;
+      if (hasAnyAdminLocal()) {
+        document.getElementById("loginFormBox").hidden = false;
+        document.getElementById("loginUser").focus();
+      } else {
+        document.getElementById("loginSetupBox").hidden = false;
+        document.getElementById("setupUser").focus();
+      }
+    };
+    if (navigator.onLine === false) { show(); return; }
+    syncUsersNow().then(show).catch(show);
+  }
+
+  document.getElementById("btnSetupAdmin").addEventListener("click", function () {
+    var username = document.getElementById("setupUser").value.trim();
+    var pass = document.getElementById("setupPass").value;
+    var pass2 = document.getElementById("setupPass2").value;
+    var errEl = document.getElementById("setupError");
+    errEl.hidden = true;
+    var slug = slugUsername(username);
+    if (!slug) { errEl.textContent = "Digite um usuário."; errEl.hidden = false; return; }
+    if (pass.length < 4) { errEl.textContent = "A senha precisa ter pelo menos 4 caracteres."; errEl.hidden = false; return; }
+    if (pass !== pass2) { errEl.textContent = "As senhas não são iguais."; errEl.hidden = false; return; }
+    var btn = document.getElementById("btnSetupAdmin");
+    btn.disabled = true;
+    sha256Hex(pass).then(function (hash) {
+      var userDoc = { id: slug, username: username, senhaHash: hash, role: "adm", ambiente: "producao", createdAt: Date.now() };
+      doLogin(userDoc);
+      if (navigator.onLine === false) showToast("Conta criada neste aparelho. Vou sincronizar com a nuvem quando a internet voltar.", "good");
+      saveUserLocalAndPush(userDoc).catch(function () {});
+    }).finally(function () { btn.disabled = false; });
+  });
+  wireEnterSubmit(["setupUser", "setupPass", "setupPass2"], "btnSetupAdmin");
+
+  document.getElementById("btnLoginEntrar").addEventListener("click", function () {
+    var username = document.getElementById("loginUser").value.trim();
+    var pass = document.getElementById("loginPass").value;
+    var errEl = document.getElementById("loginError");
+    errEl.hidden = true;
+    var slug = slugUsername(username);
+    if (!slug || !pass) { errEl.textContent = "Preencha usuário e senha."; errEl.hidden = false; return; }
+    var btn = document.getElementById("btnLoginEntrar");
+    btn.disabled = true;
+    attemptLogin(slug, pass).then(function (user) {
+      document.getElementById("loginUser").value = "";
+      document.getElementById("loginPass").value = "";
+      doLogin(user);
+    }).catch(function (err) {
+      errEl.textContent = err.message || "Usuário ou senha incorretos.";
+      errEl.hidden = false;
+    }).finally(function () { btn.disabled = false; });
+  });
+  wireEnterSubmit(["loginUser", "loginPass"], "btnLoginEntrar");
+
+  /* ---------- Painel de administração ---------- */
+
+  document.getElementById("btnAdministracao").addEventListener("click", function () {
+    document.getElementById("adminOverlay").hidden = false;
+    renderAdminUsersList();
+    syncUsersNow().then(renderAdminUsersList).catch(function () {});
+  });
+  document.getElementById("btnFecharAdmin").addEventListener("click", function () {
+    document.getElementById("adminOverlay").hidden = true;
+  });
+
+  document.getElementById("btnAdminAdicionar").addEventListener("click", function () {
+    var username = document.getElementById("adminNovoUser").value.trim();
+    var pass = document.getElementById("adminNovoSenha").value;
+    var ambiente = document.getElementById("adminNovoAmbiente").value;
+    var isAdm = document.getElementById("adminNovoAdm").checked;
+    var errEl = document.getElementById("adminNovoError");
+    errEl.hidden = true;
+    var slug = slugUsername(username);
+    if (!slug) { errEl.textContent = "Digite um usuário."; errEl.hidden = false; return; }
+    if (pass.length < 4) { errEl.textContent = "A senha precisa ter pelo menos 4 caracteres."; errEl.hidden = false; return; }
+    if (findUserBySlug(slug)) { errEl.textContent = "Já existe um usuário com esse nome."; errEl.hidden = false; return; }
+    var btn = document.getElementById("btnAdminAdicionar");
+    btn.disabled = true;
+    sha256Hex(pass).then(function (hash) {
+      var userDoc = { id: slug, username: username, senhaHash: hash, role: isAdm ? "adm" : "usuario", ambiente: ambiente, createdAt: Date.now() };
+      saveUserLocalAndPush(userDoc).catch(function () {});
+      renderAdminUsersList();
+      document.getElementById("adminNovoUser").value = "";
+      document.getElementById("adminNovoSenha").value = "";
+      document.getElementById("adminNovoAdm").checked = false;
+      showToast(navigator.onLine === false ? "Usuário criado neste aparelho — vai sincronizar quando a internet voltar." : "Usuário criado.", "good");
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  function renderAdminUsersList() {
+    var box = document.getElementById("adminUsersList");
+    box.innerHTML = "";
+    var list = usersCache.slice().sort(function (a, b) { return (a.username || "").localeCompare(b.username || ""); });
+    if (list.length === 0) {
+      box.innerHTML = '<div class="series-check-empty">Nenhum usuário ainda.</div>';
+      return;
+    }
+    list.forEach(function (u) {
+      var row = document.createElement("div");
+      row.className = "admin-user-row";
+      row.innerHTML =
+        '<div class="admin-user-main">' +
+          '<span class="admin-user-name">' + escapeHtml(u.username) + (u.role === "adm" ? ' <span class="badge badge-adm">ADM</span>' : "") + '</span>' +
+          '<select class="admin-user-ambiente"' + (u.role === "adm" ? " disabled" : "") + '>' +
+            '<option value="producao"' + (u.ambiente !== "pesquisa" ? " selected" : "") + '>Produção</option>' +
+            '<option value="pesquisa"' + (u.ambiente === "pesquisa" ? " selected" : "") + '>Pesquisa</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="admin-user-actions">' +
+          '<button class="btn-ghost admin-btn-senha" type="button">🔑 nova senha</button>' +
+          '<button class="btn-danger-ghost admin-btn-del" type="button">excluir</button>' +
+        '</div>' +
+        '<div class="admin-user-senha-box" hidden>' +
+          '<input type="password" class="admin-senha-input" placeholder="nova senha" />' +
+          '<button class="btn-primary admin-btn-senha-salvar" type="button">Salvar</button>' +
+        '</div>';
+
+      row.querySelector(".admin-user-ambiente").addEventListener("change", function (ev) {
+        var novoAmbiente = ev.target.value;
+        u.ambiente = novoAmbiente;
+        saveUserLocalAndPush(u);
+        showToast(navigator.onLine === false ? "Ambiente de " + u.username + " atualizado neste aparelho — vai sincronizar quando a internet voltar." : "Ambiente de " + u.username + " atualizado.", "good");
+        if (state.usuario && state.usuario.username === u.username) { state.usuario.ambiente = novoAmbiente; saveSession(); }
+      });
+
+      row.querySelector(".admin-btn-senha").addEventListener("click", function () {
+        var box2 = row.querySelector(".admin-user-senha-box");
+        box2.hidden = !box2.hidden;
+      });
+      row.querySelector(".admin-btn-senha-salvar").addEventListener("click", function () {
+        var input = row.querySelector(".admin-senha-input");
+        var novaSenha = input.value;
+        if (novaSenha.length < 4) { showToast("A senha precisa ter pelo menos 4 caracteres.", "bad"); return; }
+        sha256Hex(novaSenha).then(function (hash) {
+          u.senhaHash = hash;
+          input.value = "";
+          row.querySelector(".admin-user-senha-box").hidden = true;
+          showToast(navigator.onLine === false ? "Senha de " + u.username + " atualizada neste aparelho — vai sincronizar quando a internet voltar." : "Senha de " + u.username + " atualizada.", "good");
+          saveUserLocalAndPush(u);
+        });
+      });
+
+      wireConfirmDelete(row.querySelector(".admin-btn-del"), "excluir", function () {
+        var wasMe = state.usuario && state.usuario.username === u.username;
+        deleteUserLocalAndPush(u.id);
+        renderAdminUsersList();
+        showToast(navigator.onLine === false ? "Usuário excluído neste aparelho — vai confirmar na nuvem quando a internet voltar." : "Usuário excluído.", "good");
+        if (wasMe) doLogout();
+      });
+
+      box.appendChild(row);
+    });
+  }
+
+  /* ====================== Dados locais (offline-first) ======================
+     Tudo fica salvo em localStorage na hora — o app funciona 100% mesmo sem
+     internet. Cada ensaio já carrega dentro de si suas fêmeas/machos (linhas)
+     e contagens: um documento por ensaio, tanto aqui quanto na nuvem.
+
+     A partir da v1.6 existem dois AMBIENTES (Produção / Pesquisa) com dados
+     totalmente separados — cada um com sua própria chave de localStorage e
+     sua própria coleção no Firestore. Tudo que já existia no app (antes de
+     ter ambientes) é dado de PESQUISA, então é "Pesquisa" que continua usando
+     as MESMAS chaves/coleção de antes (florescimentoSplitsDataV1 /
+     florescimento_ensaios) — nenhum dado antigo se perde ou precisa ser
+     migrado. "Produção" é o ambiente novo, começa vazio. */
+  // O que já existia no app (antes de ter ambientes) é dado de PESQUISA, não de
+  // Produção — por isso é "pesquisa" que fica com as chaves/coleção antigas
+  // (onde os dados já estavam) e "producao" é quem começa vazio.
+  function dataKey() { return state.ambiente === "pesquisa" ? "florescimentoSplitsDataV1" : "florescimentoSplitsDataV1_producao"; }
+  function selectedKey() { return state.ambiente === "pesquisa" ? "florescimentoSplitsSelectedEnsaioV1" : "florescimentoSplitsSelectedEnsaioV1_producao"; }
+  function pendingDeletesKey() { return state.ambiente === "pesquisa" ? "florescimentoPendingDeletesV1" : "florescimentoPendingDeletesV1_producao"; }
+  function fbCol() { return state.ambiente === "pesquisa" ? "florescimento_ensaios" : "florescimento_ensaios_producao"; }
+
+  var DATA = { ensaios: [] }; // cada ensaio: {id, nome, createdAt, linhas:[], contagens:[]}
+
+  function loadData() {
+    DATA = { ensaios: [] };
+    try {
+      var raw = localStorage.getItem(dataKey());
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.ensaios)) DATA = parsed;
+      }
+    } catch (e) { console.warn("Falha ao ler dados locais:", e); }
+  }
+  function saveData() {
+    try { localStorage.setItem(dataKey(), JSON.stringify(DATA)); }
+    catch (e) { console.warn("Falha ao salvar dados locais:", e); }
+  }
+
+  var state = {
+    ensaioId: null,
+    eixo: "data",
+    seriesOff: {},
+    ambiente: "pesquisa",
+    usuario: null // {username, role, ambiente}
+  };
+  var chart = null;
+
+  function currentEnsaio() {
+    return DATA.ensaios.find(function (e) { return e.id === state.ensaioId; }) || null;
+  }
+  function linhaLabel(l) {
+    var base = (l.tipo === "Macho" ? "♂ " : "♀ ") + (l.nome || "(sem nome)");
+    if (l.tipo === "Macho" && l.repeticao) base += " — " + l.repeticao;
+    return base;
+  }
+  function serieLabel(l, tipoFlor) {
+    var base = linhaLabel(l);
+    if (l.tipo === "Macho") base += " (" + (tipoFlor === "Feminino" ? "Flor. Feminino" : "Flor. Masculino") + ")";
+    return base;
+  }
+
+  /* ====================== Sincronização na nuvem (Firebase, via HTTP direto) ======================
+     Mesma abordagem já validada no app "Aplicação Inova Cristalina": fala com o Firestore
+     só por fetch puro (REST), sem carregar o SDK oficial do Firebase — em alguns aparelhos
+     o SDK trava porque tenta abrir um iframe de sincronização em *.firebaseapp.com, domínio
+     que operadoras/antivírus de celular no Brasil costumam bloquear. Sem SDK não dá pra
+     "ouvir" mudanças em tempo real, então a sincronização é por consulta periódica (~45s) —
+     na prática quase não se nota a diferença.
+
+     Reaproveita o MESMO projeto Firebase (inova-defensivos) já usado pelo app de defensivos,
+     numa coleção própria (florescimento_ensaios) que não encosta nos dados de estoque —
+     nenhuma configuração nova deveria ser necessária, mas se a sincronização ficar presa em
+     "erro ao conectar à nuvem", pode ser preciso liberar essa coleção nas regras de segurança
+     do Firestore (console do Firebase) — avise o Flávio nesse caso. */
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDvwKmdj7ffwbj920pwRh5Z5v9iRQt6LrY",
+    authDomain: "inova-defensivos.firebaseapp.com",
+    projectId: "inova-defensivos",
+    storageBucket: "inova-defensivos.firebasestorage.app",
+    messagingSenderId: "335900957993",
+    appId: "1:335900957993:web:a32e38bd185f8cdc976b38"
+  };
+  var USERS_COL = "app_contagem_usuarios";
+  var FB_DOCS_BASE = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_CONFIG.projectId + "/databases/(default)/documents";
+  var FB_TOKEN_KEY = "florescimentoFbAuthTokenV1";
+
+  function withTimeout(promise, ms, message) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) { setTimeout(function () { reject(new Error(message || "Tempo esgotado")); }, ms); })
+    ]);
+  }
+
+  function loadFbToken() { try { return JSON.parse(localStorage.getItem(FB_TOKEN_KEY) || "null"); } catch (e) { return null; } }
+  function saveFbToken(t) { localStorage.setItem(FB_TOKEN_KEY, JSON.stringify(t)); }
+
+  function fbSignUpAnonymous() {
+    return fetch("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_CONFIG.apiKey,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ returnSecureToken: true }) })
+      .then(function (res) {
+        if (!res.ok) throw new Error("Falha ao criar sessão anônima (código " + res.status + ")");
+        return res.json();
+      }).then(function (data) {
+        var token = { localId: data.localId, idToken: data.idToken, refreshToken: data.refreshToken, expiresAt: Date.now() + (parseInt(data.expiresIn, 10) || 3600) * 1000 };
+        saveFbToken(token);
+        return token;
+      });
+  }
+  function fbRefreshToken(refreshToken) {
+    return fetch("https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_CONFIG.apiKey,
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=refresh_token&refresh_token=" + encodeURIComponent(refreshToken) })
+      .then(function (res) {
+        if (!res.ok) throw new Error("Falha ao renovar sessão (código " + res.status + ")");
+        return res.json();
+      }).then(function (data) {
+        var token = { localId: data.user_id, idToken: data.id_token, refreshToken: data.refresh_token, expiresAt: Date.now() + (parseInt(data.expires_in, 10) || 3600) * 1000 };
+        saveFbToken(token);
+        return token;
+      });
+  }
+  function fbGetIdToken() {
+    var token = loadFbToken();
+    if (token && token.idToken && token.expiresAt > Date.now() + 60000) return Promise.resolve(token.idToken);
+    if (token && token.refreshToken) {
+      return fbRefreshToken(token.refreshToken).then(function (t) { return t.idToken; })
+        .catch(function (e) { console.warn("Falha ao renovar token, criando nova sessão anônima:", e); return fbSignUpAnonymous().then(function (t) { return t.idToken; }); });
+    }
+    return fbSignUpAnonymous().then(function (t) { return t.idToken; });
+  }
+
+  function fbToValue(v) {
+    if (v === null || v === undefined) return { nullValue: null };
+    if (typeof v === "boolean") return { booleanValue: v };
+    if (typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    if (typeof v === "string") return { stringValue: v };
+    if (Array.isArray(v)) return { arrayValue: { values: v.map(fbToValue) } };
+    if (typeof v === "object") return { mapValue: { fields: fbToFields(v) } };
+    return { stringValue: String(v) };
+  }
+  function fbToFields(obj) {
+    var fields = {};
+    Object.keys(obj || {}).forEach(function (k) { if (obj[k] !== undefined) fields[k] = fbToValue(obj[k]); });
+    return fields;
+  }
+  function fbFromValue(v) {
+    if (!v) return null;
+    if ("nullValue" in v) return null;
+    if ("booleanValue" in v) return v.booleanValue;
+    if ("integerValue" in v) return parseInt(v.integerValue, 10);
+    if ("doubleValue" in v) return v.doubleValue;
+    if ("stringValue" in v) return v.stringValue;
+    if ("timestampValue" in v) return v.timestampValue;
+    if ("arrayValue" in v) return (v.arrayValue.values || []).map(fbFromValue);
+    if ("mapValue" in v) return fbFromFields(v.mapValue.fields || {});
+    return null;
+  }
+  function fbFromFields(fields) {
+    var obj = {};
+    Object.keys(fields || {}).forEach(function (k) { obj[k] = fbFromValue(fields[k]); });
+    return obj;
+  }
+
+  function fbAuthFetch(url, opts) {
+    opts = opts || {};
+    return fbGetIdToken().then(function (idToken) {
+      var headers = Object.assign({}, opts.headers || {}, { Authorization: "Bearer " + idToken });
+      return fetch(url, Object.assign({}, opts, { headers: headers }));
+    });
+  }
+  function fbSetDoc(path, obj) {
+    return fbAuthFetch(FB_DOCS_BASE + "/" + path,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields: fbToFields(obj) }) })
+      .then(function (res) { if (!res.ok) throw new Error("Erro ao salvar " + path + " (código " + res.status + ")"); });
+  }
+  function fbDeleteDoc(path) {
+    return fbAuthFetch(FB_DOCS_BASE + "/" + path, { method: "DELETE" })
+      .then(function (res) { if (!res.ok && res.status !== 404) throw new Error("Erro ao excluir " + path + " (código " + res.status + ")"); });
+  }
+  function fbListCollection(name) {
+    var docs = [];
+    function page(pageToken) {
+      var url = FB_DOCS_BASE + "/" + name + "?pageSize=300" + (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
+      return fbAuthFetch(url, { method: "GET" }).then(function (res) {
+        if (!res.ok) throw new Error("Erro ao listar " + name + " (código " + res.status + ")");
+        return res.json();
+      }).then(function (data) {
+        (data.documents || []).forEach(function (d) {
+          var id = d.name.split("/").pop();
+          docs.push(Object.assign({ id: id }, fbFromFields(d.fields || {})));
+        });
+        if (data.nextPageToken) return page(data.nextPageToken);
+      });
+    }
+    return page("").then(function () { return docs; });
+  }
+
+  var fbReady = false;
+  var fbReadyPromise = null;
+  function ensureFirebaseReady() {
+    if (fbReady) return Promise.resolve();
+    if (fbReadyPromise) return fbReadyPromise;
+    fbReadyPromise = fbGetIdToken().then(function () { fbReady = true; });
+    fbReadyPromise.catch(function () { fbReadyPromise = null; });
+    return fbReadyPromise;
+  }
+
+  function setSyncStatus(status) {
+    var el = document.getElementById("syncStatusText");
+    var map = {
+      off: { txt: "⚪ Local", title: "Sincronização na nuvem não configurada — dados salvos só neste aparelho." },
+      connecting: { txt: "🟡 Conectando", title: "Conectando à nuvem..." },
+      on: { txt: "🟢 Sincronizado", title: "Sincronizado na nuvem — dados compartilhados entre todos os aparelhos." },
+      offline: { txt: "🟡 Offline", title: "Sem internet agora — vai sincronizar automaticamente ao reconectar." },
+      error: { txt: "🔴 Erro", title: "Erro ao conectar à nuvem (dados continuam salvos neste aparelho)." }
+    };
+    var m = map[status] || { txt: status, title: "" };
+    if (el) { el.textContent = m.txt; el.title = m.title; }
+  }
+
+  // Fila de envio por ensaio: garante que só existe UM envio em voo por ensaio de cada vez
+  // (o mesmo problema de corrida já resolvido no app de defensivos — duas edições rápidas
+  // não podem virar dois PUTs concorrentes fora de ordem).
+  var fbPush = {}; // ensaioId -> {inFlight, queued, pending}
+  var pendingDeletes = []; // ids de ensaios excluídos localmente mas ainda não confirmados na nuvem
+
+  function ensaioPayload(id) {
+    var e = DATA.ensaios.find(function (x) { return x.id === id; });
+    if (!e) return null;
+    return { nome: e.nome, createdAt: e.createdAt, linhas: e.linhas || [], contagens: e.contagens || [], updatedAt: new Date().toISOString() };
+  }
+  function fbSendEnsaioNow(id) {
+    var payload = ensaioPayload(id);
+    var st = fbPush[id] || (fbPush[id] = {});
+    if (!payload) { st.inFlight = false; st.pending = false; return Promise.resolve(); }
+    return fbSetDoc(fbCol() + "/" + id, payload).then(function () {
+      if (st.queued) { st.queued = false; return fbSendEnsaioNow(id); }
+      st.inFlight = false; st.pending = false;
+    }).catch(function (err) {
+      console.warn("Erro ao enviar ensaio para a nuvem:", err);
+      st.inFlight = false; st.queued = false;
+      // st.pending continua true de propósito — a próxima sincronização tenta de novo.
+    });
+  }
+  function fbPushEnsaio(id) {
+    if (!fbReady) { var st0 = fbPush[id] || (fbPush[id] = {}); st0.pending = true; return Promise.resolve(); }
+    var st = fbPush[id] || (fbPush[id] = {});
+    st.pending = true;
+    if (st.inFlight) { st.queued = true; return Promise.resolve(); }
+    st.inFlight = true;
+    return fbSendEnsaioNow(id);
+  }
+  function fbDeleteEnsaioRemote(id) {
+    delete fbPush[id];
+    if (pendingDeletes.indexOf(id) === -1) pendingDeletes.push(id);
+    savePendingDeletes();
+    if (!fbReady) return;
+    fbDeleteDoc(fbCol() + "/" + id).then(function () {
+      pendingDeletes = pendingDeletes.filter(function (x) { return x !== id; });
+      savePendingDeletes();
+    }).catch(function (err) { console.warn("Erro ao excluir ensaio na nuvem:", err); });
+  }
+  function savePendingDeletes() {
+    try { localStorage.setItem(pendingDeletesKey(), JSON.stringify(pendingDeletes)); } catch (e) {}
+  }
+  function loadPendingDeletes() {
+    try { pendingDeletes = JSON.parse(localStorage.getItem(pendingDeletesKey()) || "[]"); } catch (e) { pendingDeletes = []; }
+  }
+
+  function syncNow(opts) {
+    opts = opts || {};
+    var statusEl = document.getElementById("syncNowStatus");
+    if (!opts.silent && statusEl) statusEl.textContent = "⏳ Sincronizando agora...";
+    return withTimeout(ensureFirebaseReady(), 20000, "Tempo esgotado — sinal fraco?").then(function () {
+      // Reenvia exclusões de ensaio que ainda não foram confirmadas na nuvem.
+      var deletes = pendingDeletes.slice();
+      return Promise.all(deletes.map(function (id) {
+        return fbDeleteDoc(fbCol() + "/" + id).then(function () {
+          pendingDeletes = pendingDeletes.filter(function (x) { return x !== id; });
+          savePendingDeletes();
+        }).catch(function () {});
+      })).then(function () { return fbListCollection(fbCol()); });
+    }).then(function (remoteList) {
+      remoteList = remoteList.filter(function (e) { return pendingDeletes.indexOf(e.id) === -1; });
+      var remoteById = {};
+      remoteList.forEach(function (e) { remoteById[e.id] = e; });
+      var localById = {};
+      DATA.ensaios.forEach(function (e) { localById[e.id] = e; });
+
+      var merged = [];
+      remoteList.forEach(function (re) {
+        var st = fbPush[re.id];
+        // Se este aparelho ainda tem uma edição não confirmada, mantém a versão local
+        // (mais nova) em vez de sobrescrever com o que acabou de vir da nuvem.
+        merged.push((st && st.pending && localById[re.id]) ? localById[re.id] : re);
+      });
+      DATA.ensaios.forEach(function (e) {
+        if (!remoteById[e.id] && pendingDeletes.indexOf(e.id) === -1) {
+          merged.push(e);
+          var st = fbPush[e.id] || (fbPush[e.id] = {});
+          st.pending = true; // ainda não existe na nuvem — precisa ser enviado
+        }
+      });
+
+      // Só re-desenha a tela (seletor, gráfico, tabela) se alguma coisa realmente
+      // mudou com a sincronização — senão o gráfico ficava "piscando"/resetando
+      // a cada ~45s mesmo sem nenhuma contagem nova, e isso também desmarcava
+      // as caixinhas de série que a pessoa tinha escolhido no gráfico.
+      var mudou = JSON.stringify(merged) !== JSON.stringify(DATA.ensaios);
+      DATA.ensaios = merged;
+      saveData();
+      if (mudou) renderEnsaioSelect();
+      setSyncStatus("on");
+      if (!opts.silent && statusEl) statusEl.textContent = "✅ Sincronizado agora.";
+
+      Object.keys(fbPush).forEach(function (id) {
+        if (fbPush[id].pending && !fbPush[id].inFlight) fbPushEnsaio(id);
+      });
+    }).catch(function (e) {
+      console.warn("Erro sincronizando:", e);
+      setSyncStatus(navigator.onLine === false ? "offline" : "error");
+      if (!opts.silent && statusEl) statusEl.textContent = "🔴 " + e.message;
+      throw e;
+    });
+  }
+
+  var fbSyncIntervalStarted = false;
+  function initFirebaseSync() {
+    setSyncStatus("connecting");
+    syncNow({ silent: true }).catch(function () {});
+    syncUsersNow().catch(function () {});
+    if (fbSyncIntervalStarted) return;
+    fbSyncIntervalStarted = true;
+    setInterval(function () {
+      if (navigator.onLine === false) return;
+      syncNow({ silent: true }).catch(function () {});
+      syncUsersNow().catch(function () {});
+    }, 45000);
+    window.addEventListener("online", function () { syncNow({ silent: true }).catch(function () {}); syncUsersNow().catch(function () {}); });
+    window.addEventListener("offline", function () { setSyncStatus("offline"); });
+  }
+
+  document.getElementById("btnSyncNow").addEventListener("click", function () {
+    syncNow({ silent: false }).catch(function () {});
+    syncUsersNow().catch(function () {});
+  });
+
+  /* ====================== Ensaios ====================== */
+
+  function renderEnsaioSelect() {
+    var sel = document.getElementById("ensaioSelect");
+    var prev = state.ensaioId;
+    sel.innerHTML = "";
+    var ensaiosOrdenados = DATA.ensaios.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    if (ensaiosOrdenados.length === 0) {
+      var opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "Nenhum ensaio ainda — crie um";
+      sel.appendChild(opt);
+      document.getElementById("app").hidden = true;
+      document.getElementById("btnExcluirEnsaio").disabled = true;
+      state.ensaioId = null;
+      return;
+    }
+    ensaiosOrdenados.forEach(function (e) {
+      var opt = document.createElement("option");
+      opt.value = e.id;
+      opt.textContent = e.nome || "(sem nome)";
+      sel.appendChild(opt);
+    });
+    var toSelect = prev && ensaiosOrdenados.some(function (e) { return e.id === prev; }) ? prev : ensaiosOrdenados[0].id;
+    sel.value = toSelect;
+    document.getElementById("btnExcluirEnsaio").disabled = false;
+    if (toSelect === prev) {
+      // Continua no mesmo ensaio de antes — só atualiza o conteúdo (linhas,
+      // gráfico, tabela) sem resetar o que a pessoa tinha marcado/desmarcado
+      // no "o que mostrar no gráfico".
+      document.getElementById("app").hidden = !toSelect;
+      renderLinhas();
+      renderContagemLinhaOptions();
+      renderChart();
+      renderTable();
+    } else {
+      selectEnsaio(toSelect);
+    }
+  }
+
+  function selectEnsaio(id) {
+    state.ensaioId = id;
+    state.seriesOff = {};
+    try { localStorage.setItem(selectedKey(), id || ""); } catch (e) {}
+    document.getElementById("app").hidden = !id;
+    if (!id) return;
+    renderLinhas();
+    renderContagemLinhaOptions();
+    renderChart();
+    renderTable();
+  }
+
+  document.getElementById("ensaioSelect").addEventListener("change", function (e) {
+    selectEnsaio(e.target.value);
+  });
+
+  document.getElementById("btnNovoEnsaio").addEventListener("click", function () {
+    var f = document.getElementById("novoEnsaioForm");
+    f.hidden = !f.hidden;
+    if (!f.hidden) document.getElementById("novoEnsaioNome").focus();
+  });
+  document.getElementById("btnCancelarEnsaio").addEventListener("click", function () {
+    document.getElementById("novoEnsaioForm").hidden = true;
+    document.getElementById("novoEnsaioNome").value = "";
+  });
+  document.getElementById("btnSalvarEnsaio").addEventListener("click", function () {
+    var nome = document.getElementById("novoEnsaioNome").value.trim();
+    if (!nome) { document.getElementById("novoEnsaioNome").focus(); return; }
+    var id = uid();
+    DATA.ensaios.push({ id: id, nome: nome, createdAt: Date.now(), linhas: [], contagens: [] });
+    saveData();
+    document.getElementById("novoEnsaioNome").value = "";
+    document.getElementById("novoEnsaioForm").hidden = true;
+    state.ensaioId = id;
+    renderEnsaioSelect();
+    showToast("Ensaio criado.", "good");
+    fbPushEnsaio(id);
+  });
+
+  var resetExcluirEnsaio = wireConfirmDelete(document.getElementById("btnExcluirEnsaio"), "Excluir ensaio", function () {
+    var btn = document.getElementById("btnExcluirEnsaio");
+    if (!state.ensaioId) { resetExcluirEnsaio(); return; }
+    var id = state.ensaioId;
+    DATA.ensaios = DATA.ensaios.filter(function (e) { return e.id !== id; });
+    saveData();
+    renderEnsaioSelect();
+    showToast("Ensaio excluído.", "good");
+    resetExcluirEnsaio();
+    fbDeleteEnsaioRemote(id);
+  });
+
+  /* ====================== Linhas (fêmeas/machos) ====================== */
+
+  function renderLinhas() {
+    var box = document.getElementById("linhaList");
+    box.innerHTML = "";
+    var ensaio = currentEnsaio();
+    var linhas = ensaio ? (ensaio.linhas || []) : [];
+    if (linhas.length === 0) {
+      box.innerHTML = '<div class="empty">Nenhuma fêmea ou macho cadastrado ainda neste ensaio.</div>';
+      updateMachoOptionAvailability();
+      return;
+    }
+    var sorted = linhas.slice().sort(function (a, b) {
+      if (a.tipo !== b.tipo) return a.tipo === "Femea" ? -1 : 1;
+      return (a.nome || "").localeCompare(b.nome || "");
+    });
+    sorted.forEach(function (l) {
+      var idx = linhas.indexOf(l);
+      var item = document.createElement("div");
+      item.className = "linha-item";
+      var badgeTxt = (l.tipo === "Macho" ? "♂ " : "♀ ") + (l.tipo === "Macho" ? (l.repeticao || "Macho") : "Fêmea");
+      var badge = '<span class="badge ' + (l.tipo === "Macho" ? "badge-macho" : "badge-femea") + '">' + escapeHtml(badgeTxt) + "</span>";
+      var plantio = l.dataPlantio ? '<span class="linha-meta">plantio ' + fmtDateShort(l.dataPlantio) + "</span>" : '<span class="linha-meta">sem data de plantio</span>';
+      item.innerHTML =
+        '<span class="dot" style="background:' + colorForIndex(idx) + '"></span>' +
+        badge +
+        '<span class="linha-name">' + escapeHtml(l.nome || "(sem nome)") + "</span>" +
+        plantio +
+        '<button class="btn-danger-ghost" data-del-linha="' + l.id + '">excluir</button>';
+      box.appendChild(item);
+    });
+    box.querySelectorAll("[data-del-linha]").forEach(function (btn) {
+      var id = btn.getAttribute("data-del-linha");
+      wireConfirmDelete(btn, "excluir", function () {
+        var e = currentEnsaio();
+        if (!e) return;
+        e.linhas = (e.linhas || []).filter(function (x) { return x.id !== id; });
+        e.contagens = (e.contagens || []).filter(function (x) { return x.linhaId !== id; });
+        saveData();
+        renderLinhas();
+        renderContagemLinhaOptions();
+        renderChart();
+        renderTable();
+        showToast("Excluído.", "good");
+        fbPushEnsaio(e.id);
+      });
+    });
+    updateMachoOptionAvailability();
+  }
+
+  function hasMacho() {
+    var e = currentEnsaio();
+    return !!(e && (e.linhas || []).some(function (l) { return l.tipo === "Macho"; }));
+  }
+
+  function updateMachoOptionAvailability() {
+    var blocked = hasMacho();
+    document.getElementById("novaMachoBlocked").hidden = !blocked;
+    document.getElementById("novaMachoHint").hidden = blocked;
+    document.getElementById("btnSalvarMacho").disabled = blocked;
+    document.getElementById("novaMachoNome").disabled = blocked;
+    document.getElementById("novaMachoPlantio1").disabled = blocked;
+    document.getElementById("novaMachoPlantio2").disabled = blocked;
+    document.getElementById("novaMachoPlantio3").disabled = blocked;
+  }
+
+  document.getElementById("btnSalvarFemea").addEventListener("click", function () {
+    var e = currentEnsaio();
+    if (!e) return;
+    var nome = document.getElementById("novaFemeaNome").value.trim();
+    var plantio = document.getElementById("novaFemeaPlantio").value;
+    if (!nome) { document.getElementById("novaFemeaNome").focus(); return; }
+    if (!plantio) {
+      document.getElementById("novaFemeaPlantio").focus();
+      showToast("Informe a data de plantio da fêmea — ela é obrigatória.", "error");
+      return;
+    }
+    e.linhas = e.linhas || [];
+    e.linhas.push({ id: uid(), tipo: "Femea", nome: nome, repeticao: "", dataPlantio: plantio, createdAt: Date.now() });
+    saveData();
+    renderLinhas();
+    renderContagemLinhaOptions();
+    showToast("Fêmea adicionada.", "good");
+    document.getElementById("novaFemeaNome").value = "";
+    document.getElementById("novaFemeaPlantio").value = "";
+    document.getElementById("novaFemeaNome").focus();
+    fbPushEnsaio(e.id);
+  });
+
+  document.getElementById("btnSalvarMacho").addEventListener("click", function () {
+    var e = currentEnsaio();
+    if (!e) return;
+    if (hasMacho()) {
+      showToast("Este ensaio já tem um macho cadastrado — só é permitido 1 macho por ensaio.", "error");
+      return;
+    }
+    var nome = document.getElementById("novaMachoNome").value.trim();
+    var plantios = [
+      document.getElementById("novaMachoPlantio1").value,
+      document.getElementById("novaMachoPlantio2").value,
+      document.getElementById("novaMachoPlantio3").value
+    ];
+    if (!nome) { document.getElementById("novaMachoNome").focus(); return; }
+    e.linhas = e.linhas || [];
+    ["Macho 1", "Macho 2", "Macho 3"].forEach(function (rep, i) {
+      e.linhas.push({ id: uid(), tipo: "Macho", nome: nome, repeticao: rep, dataPlantio: plantios[i] || "", createdAt: Date.now() });
+    });
+    saveData();
+    renderLinhas();
+    renderContagemLinhaOptions();
+    showToast("Macho adicionado (Macho 1, 2 e 3).", "good");
+    document.getElementById("novaMachoNome").value = "";
+    document.getElementById("novaMachoPlantio1").value = "";
+    document.getElementById("novaMachoPlantio2").value = "";
+    document.getElementById("novaMachoPlantio3").value = "";
+    fbPushEnsaio(e.id);
+  });
+
+  /* ====================== Contagens ====================== */
+
+  function renderContagemLinhaOptions() {
+    var sel = document.getElementById("contLinha");
+    var prev = sel.value;
+    sel.innerHTML = "";
+    var e = currentEnsaio();
+    var linhas = e ? (e.linhas || []) : [];
+    if (linhas.length === 0) {
+      var opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "Cadastre uma fêmea/macho primeiro";
+      sel.appendChild(opt);
+      document.getElementById("btnSalvarContagem").disabled = true;
+      return;
+    }
+    document.getElementById("btnSalvarContagem").disabled = false;
+    linhas.slice().sort(function (a, b) {
+      if (a.tipo !== b.tipo) return a.tipo === "Femea" ? -1 : 1;
+      return (a.nome || "").localeCompare(b.nome || "");
+    }).forEach(function (l) {
+      var opt = document.createElement("option");
+      opt.value = l.id;
+      opt.textContent = linhaLabel(l);
+      sel.appendChild(opt);
+    });
+    if (prev && linhas.some(function (l) { return l.id === prev; })) sel.value = prev;
+    updateContTipoFlorVisibility();
+  }
+
+  function updateContTipoFlorVisibility() {
+    var linhaId = document.getElementById("contLinha").value;
+    var e = currentEnsaio();
+    var l = e && (e.linhas || []).find(function (x) { return x.id === linhaId; });
+    document.getElementById("contTipoFlorField").hidden = !l || l.tipo !== "Macho";
+  }
+  document.getElementById("contLinha").addEventListener("change", updateContTipoFlorVisibility);
+
+  document.getElementById("contData").value = todayISO();
+
+  document.getElementById("btnSalvarContagem").addEventListener("click", function () {
+    var e = currentEnsaio();
+    if (!e) return;
+    var linhaId = document.getElementById("contLinha").value;
+    var data = document.getElementById("contData").value;
+    var valorStr = document.getElementById("contValor").value;
+    var quem = document.getElementById("contQuem").value.trim();
+    var linha = (e.linhas || []).find(function (x) { return x.id === linhaId; });
+    var tipoFlor = linha && linha.tipo === "Macho" ? document.getElementById("contTipoFlor").value : "Feminino";
+    if (!linhaId) { document.getElementById("contLinha").focus(); return; }
+    if (!data) { document.getElementById("contData").focus(); return; }
+    if (valorStr === "") { document.getElementById("contValor").focus(); return; }
+    var valor = Math.max(0, Math.round(Number(valorStr)));
+    var linhaTxt = linha ? linhaLabel(linha) : "";
+    e.contagens = e.contagens || [];
+    e.contagens.push({ id: uid(), linhaId: linhaId, data: data, contagem: valor, tipoFlorescimento: tipoFlor, lancadoPor: quem, createdAt: Date.now() });
+    saveData();
+    renderChart();
+    renderTable();
+    showToast("Contagem salva: " + linhaTxt + " — " + valor + " em " + fmtDateShort(data) + ".", "good");
+    document.getElementById("contValor").value = "";
+    document.getElementById("contValor").focus();
+    fbPushEnsaio(e.id);
+  });
+
+  function renderTable() {
+    var body = document.getElementById("contTableBody");
+    body.innerHTML = "";
+    var e = currentEnsaio();
+    var linhas = e ? (e.linhas || []) : [];
+    var contagens = e ? (e.contagens || []) : [];
+    var linhaById = {};
+    linhas.forEach(function (l) { linhaById[l.id] = l; });
+    var rows = contagens.slice().sort(function (a, b) {
+      if (a.data !== b.data) return a.data < b.data ? 1 : -1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+    document.getElementById("contTableEmpty").hidden = rows.length > 0;
+    rows.forEach(function (c) {
+      var l = linhaById[c.linhaId];
+      var tr = document.createElement("tr");
+      var tipoFlorTxt = l && l.tipo === "Macho" ? (c.tipoFlorescimento === "Feminino" ? "Flor. Feminino" : "Flor. Masculino") : "Flor. Feminino";
+      tr.innerHTML =
+        "<td>" + escapeHtml(l ? linhaLabel(l) : "(removida)") + "</td>" +
+        "<td>" + tipoFlorTxt + "</td>" +
+        "<td>" + fmtDateShort(c.data) + "</td>" +
+        "<td>" + escapeHtml(c.contagem) + "</td>" +
+        "<td>" + escapeHtml(c.lancadoPor || "—") + "</td>" +
+        '<td><button class="btn-danger-ghost" data-del-cont="' + c.id + '">excluir</button></td>';
+      body.appendChild(tr);
+    });
+    body.querySelectorAll("[data-del-cont]").forEach(function (btn) {
+      var id = btn.getAttribute("data-del-cont");
+      wireConfirmDelete(btn, "excluir", function () {
+        var e2 = currentEnsaio();
+        if (!e2) return;
+        e2.contagens = (e2.contagens || []).filter(function (x) { return x.id !== id; });
+        saveData();
+        renderChart();
+        renderTable();
+        showToast("Excluído.", "good");
+        fbPushEnsaio(e2.id);
+      });
+    });
+  }
+
+  /* ====================== Chart ====================== */
+
+  document.getElementById("btnEixoData").addEventListener("click", function () { setEixo("data"); });
+  document.getElementById("btnEixoDap").addEventListener("click", function () { setEixo("dap"); });
+
+  function setEixo(eixo) {
+    state.eixo = eixo;
+    document.getElementById("btnEixoData").classList.toggle("active", eixo === "data");
+    document.getElementById("btnEixoDap").classList.toggle("active", eixo === "dap");
+    renderChart();
+  }
+
+  document.getElementById("btnMarcarTodas").addEventListener("click", function () {
+    buildSeries().forEach(function (s) { delete state.seriesOff[s.key]; });
+    renderChart();
+  });
+  document.getElementById("btnDesmarcarTodas").addEventListener("click", function () {
+    buildSeries().forEach(function (s) { state.seriesOff[s.key] = true; });
+    renderChart();
+  });
+
+  function buildSeries() {
+    var e = currentEnsaio();
+    var linhas = e ? (e.linhas || []) : [];
+    var contagens = e ? (e.contagens || []) : [];
+    var linhaById = {};
+    linhas.forEach(function (l) { linhaById[l.id] = l; });
+    var byKey = {};
+    contagens.forEach(function (c) {
+      var l = linhaById[c.linhaId];
+      if (!l) return;
+      var tipoFlor = l.tipo === "Macho" ? (c.tipoFlorescimento === "Feminino" ? "Feminino" : "Masculino") : "Feminino";
+      var key = c.linhaId + "|" + tipoFlor;
+      (byKey[key] = byKey[key] || { linha: l, tipoFlor: tipoFlor, pts: [] }).pts.push(c);
+    });
+
+    var sortedLinhaIds = linhas.slice().sort(function (a, b) {
+      if (a.tipo !== b.tipo) return a.tipo === "Femea" ? -1 : 1;
+      return (a.nome || "").localeCompare(b.nome || "");
+    }).map(function (l) { return l.id; });
+
+    var series = [];
+    var colorIdx = 0;
+    sortedLinhaIds.forEach(function (lid) {
+      ["Feminino", "Masculino"].forEach(function (tipoFlor) {
+        var group = byKey[lid + "|" + tipoFlor];
+        if (!group) return;
+        var l = group.linha;
+        var plantio = parseISODate(l.dataPlantio);
+        var pts = group.pts.slice().sort(function (a, b) { return a.data < b.data ? -1 : 1; });
+        var xy = pts.map(function (c) {
+          var d = parseISODate(c.data);
+          var x;
+          if (state.eixo === "dap") {
+            if (!plantio || !d) return null;
+            x = daysBetween(plantio, d);
+          } else {
+            x = d ? d.getTime() : null;
+          }
+          if (x == null) return null;
+          return { x: x, y: c.contagem, data: c.data };
+        }).filter(Boolean);
+        if (xy.length === 0) return;
+        series.push({
+          key: lid + "|" + tipoFlor,
+          linhaId: lid,
+          label: serieLabel(l, tipoFlor),
+          color: colorForIndex(colorIdx++),
+          points: xy
+        });
+      });
+    });
+    return series;
+  }
+
+  function renderChart() {
+    var chartEmptyEl = document.getElementById("chartEmpty");
+    var canvasEl = document.getElementById("chart");
+
+    if (chartLib.failed) {
+      canvasEl.style.display = "none";
+      chartEmptyEl.hidden = false;
+      chartEmptyEl.textContent = "Não consegui carregar a biblioteca do gráfico (conexão bloqueada?). Recarregue a página para tentar de novo.";
+      renderSeriesPicker([]);
+      return;
+    }
+    if (!chartLib.ready) {
+      canvasEl.style.display = "none";
+      chartEmptyEl.hidden = false;
+      chartEmptyEl.textContent = "Carregando gráfico…";
+      return;
+    }
+    if (!state.ensaioId) return;
+    chartEmptyEl.textContent = "Lance pelo menos uma contagem para ver o gráfico.";
+
+    var series = buildSeries();
+    var visible = series.filter(function (s) { return !state.seriesOff[s.key]; });
+    chartEmptyEl.hidden = series.length > 0;
+    canvasEl.style.display = series.length > 0 ? "" : "none";
+    renderSeriesPicker(series);
+
+    if (series.length === 0) {
+      if (chart) { chart.destroy(); chart = null; }
+      return;
+    }
+
+    var e = currentEnsaio();
+    if (state.eixo === "dap") {
+      document.getElementById("btnEixoDap").disabled = !(e && (e.linhas || []).some(function (l) { return l.dataPlantio; }));
+    }
+
+    var datasets = visible.map(function (s) {
+      return {
+        label: s.label,
+        data: s.points.map(function (p) { return { x: p.x, y: p.y, __date: p.data }; }),
+        borderColor: s.color,
+        backgroundColor: s.color,
+        pointBackgroundColor: s.color,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        tension: 0.15,
+        fill: false
+      };
+    });
+
+    var isData = state.eixo === "data";
+    var ctx = canvasEl.getContext("2d");
+    var cfg = {
+      type: "line",
+      data: { datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", intersect: false },
+        scales: {
+          x: {
+            type: "linear",
+            grid: { color: cssVar("--grid") },
+            ticks: {
+              color: cssVar("--text-muted"),
+              callback: function (val) {
+                return isData ? fmtDateShort(new Date(val).toISOString().slice(0, 10)) : Math.round(val) + "d";
+              }
+            },
+            title: { display: true, text: isData ? "Data" : "DAP (dias após plantio)", color: cssVar("--text-secondary") }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: cssVar("--grid") },
+            ticks: { color: cssVar("--text-muted") },
+            title: { display: true, text: "Plantas florescidas", color: cssVar("--text-secondary") }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: cssVar("--card-bg"),
+            titleColor: cssVar("--text-primary"),
+            bodyColor: cssVar("--text-secondary"),
+            borderColor: cssVar("--border"),
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              title: function (items) {
+                if (!items.length) return "";
+                var raw = items[0].raw;
+                return isData ? fmtDateShort(raw.__date) : "DAP " + Math.round(items[0].parsed.x);
+              },
+              label: function (item) {
+                return item.dataset.label + ": " + item.parsed.y;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    try {
+      if (chart) { chart.destroy(); }
+      chart = new Chart(ctx, cfg);
+    } catch (err) {
+      console.error("chart render error", err);
+      chart = null;
+      canvasEl.style.display = "none";
+      chartEmptyEl.hidden = false;
+      chartEmptyEl.textContent = "Não consegui desenhar o gráfico agora. Tenta recarregar a página.";
+    }
+  }
+
+  function renderSeriesPicker(series) {
+    var box = document.getElementById("seriesPicker");
+    box.innerHTML = "";
+    if (series.length === 0) {
+      box.innerHTML = '<div class="series-check-empty">Lance contagens pra ter o que escolher aqui.</div>';
+      return;
+    }
+    series.forEach(function (s) {
+      var checked = !state.seriesOff[s.key];
+      var item = document.createElement("label");
+      item.className = "series-check";
+      item.innerHTML =
+        '<input type="checkbox" ' + (checked ? "checked" : "") + ' />' +
+        '<span class="series-swatch" style="background:' + s.color + '"></span>' +
+        '<span>' + escapeHtml(s.label) + "</span>";
+      item.querySelector("input").addEventListener("change", function (ev) {
+        state.seriesOff[s.key] = !ev.target.checked;
+        renderChart();
+      });
+      box.appendChild(item);
+    });
+  }
+
+  /* ====================== Exportar ====================== */
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function slugify(s) {
+    var out = (s || "").toString().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+    return out || "arquivo";
+  }
+
+  function downloadDataUrl(dataUrl, filename) {
+    var a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  // ExcelJS (não o SheetJS) porque precisa colar a imagem do gráfico DENTRO do
+  // arquivo .xlsx — o SheetJS de graça não faz isso, o ExcelJS faz.
+  var xlsxLib = { ready: false, failed: false, loading: null };
+  function ensureXlsxLib() {
+    if (window.ExcelJS) { xlsxLib.ready = true; return Promise.resolve(); }
+    if (xlsxLib.loading) return xlsxLib.loading;
+    xlsxLib.loading = loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js")
+      .catch(function () {
+        return loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
+      })
+      .then(function () { xlsxLib.ready = true; })
+      .catch(function (err) {
+        console.error("ExcelJS failed to load", err);
+        xlsxLib.failed = true;
+      });
+    return xlsxLib.loading;
+  }
+
+  document.getElementById("btnBaixarGrafico").addEventListener("click", function () {
+    if (!chart) {
+      showToast("Gere o gráfico primeiro (lance ao menos uma contagem).", "bad");
+      return;
+    }
+    var e = currentEnsaio();
+    var dataUrl = chart.toBase64Image("image/png", 1);
+    downloadDataUrl(dataUrl, "grafico-" + slugify(e ? e.nome : "") + "-" + todayStr() + ".png");
+  });
+
+  document.getElementById("btnBaixarExcel").addEventListener("click", function () {
+    var e = currentEnsaio();
+    if (!e) { showToast("Selecione um ensaio primeiro.", "bad"); return; }
+    var contagens = e.contagens || [];
+    if (contagens.length === 0) { showToast("Nenhuma contagem lançada ainda.", "bad"); return; }
+    var statusEl = document.getElementById("exportStatus");
+    statusEl.textContent = "Preparando arquivo…";
+    ensureXlsxLib().then(function () {
+      if (xlsxLib.failed || !window.ExcelJS) {
+        statusEl.textContent = "";
+        showToast("Não consegui carregar a biblioteca de Excel (conexão bloqueada?). Tenta recarregar a página.", "bad");
+        return;
+      }
+      var linhaById = {};
+      (e.linhas || []).forEach(function (l) { linhaById[l.id] = l; });
+      var rows = contagens.slice().sort(function (a, b) {
+        if (a.data !== b.data) return a.data < b.data ? -1 : 1;
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      }).map(function (c) {
+        var l = linhaById[c.linhaId];
+        var tipoFlorTxt = l && l.tipo === "Macho" ? (c.tipoFlorescimento === "Feminino" ? "Flor. Feminino" : "Flor. Masculino") : "Flor. Feminino";
+        return {
+          linha: l ? linhaLabel(l) : "(removida)",
+          tipo: tipoFlorTxt,
+          data: c.data || "",
+          contagem: c.contagem,
+          por: c.lancadoPor || ""
+        };
+      });
+
+      var wb = new ExcelJS.Workbook();
+      wb.creator = "App de Contagem";
+      wb.created = new Date();
+
+      var wsC = wb.addWorksheet("Contagens");
+      wsC.columns = [
+        { header: "Fêmea/Macho", key: "linha", width: 26 },
+        { header: "Tipo", key: "tipo", width: 16 },
+        { header: "Data", key: "data", width: 12 },
+        { header: "Contagem", key: "contagem", width: 10 },
+        { header: "Lançado por", key: "por", width: 18 }
+      ];
+      wsC.getRow(1).font = { bold: true };
+      rows.forEach(function (r) { wsC.addRow(r); });
+
+      var wsG = wb.addWorksheet("Gráfico");
+      if (chart) {
+        var dataUrl = chart.toBase64Image("image/png", 1);
+        var canvasEl = document.getElementById("chart");
+        var imageId = wb.addImage({ base64: dataUrl.split(",")[1], extension: "png" });
+        wsG.addImage(imageId, {
+          tl: { col: 0, row: 0 },
+          ext: { width: canvasEl.clientWidth || 800, height: canvasEl.clientHeight || 320 }
+        });
+      } else {
+        wsG.getCell("A1").value = "Nenhum gráfico disponível (lance contagens pra ter o que mostrar aqui).";
+      }
+
+      return wb.xlsx.writeBuffer().then(function (buffer) {
+        var blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        var url = URL.createObjectURL(blob);
+        downloadDataUrl(url, "contagens-" + slugify(e.nome) + "-" + todayStr() + ".xlsx");
+        setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      });
+    }).then(function () {
+      statusEl.textContent = "";
+      showToast("Arquivo baixado.", "good");
+    }).catch(function (err) {
+      console.error("Erro ao gerar Excel", err);
+      statusEl.textContent = "";
+      showToast("Erro ao gerar o arquivo. Tenta de novo.", "bad");
+    });
+  });
+
+  /* ====================== Boot ====================== */
+
+  function boot() {
+    loadUsersCache();
+    var session = loadSession();
+    if (session && session.username) {
+      state.usuario = session;
+      state.ambiente = session.role === "adm" ? (loadAdmAmbientePref() || "pesquisa") : session.ambiente;
+      enterApp();
+      // Atualiza a lista de usuários em segundo plano — ex.: se o administrador
+      // moveu essa pessoa de ambiente ou excluiu a conta noutro aparelho.
+      syncUsersNow().then(function () {
+        var fresh = findUserBySlug(slugUsername(session.username));
+        if (!fresh) { doLogout(); return; }
+        if (state.usuario.role !== "adm" && fresh.ambiente !== state.usuario.ambiente) {
+          state.usuario.ambiente = fresh.ambiente;
+          state.ambiente = fresh.ambiente;
+          saveSession();
+          if (chart) { chart.destroy(); chart = null; }
+          loadData();
+          loadPendingDeletes();
+          try { state.ensaioId = localStorage.getItem(selectedKey()) || null; } catch (e) {}
+          renderEnsaioSelect();
+          renderUserBar();
+          showToast("Seu acesso foi movido para o ambiente " + (fresh.ambiente === "pesquisa" ? "Pesquisa" : "Produção") + ".", "good");
+        }
+      }).catch(function () {});
+    } else {
+      showLoginScreen();
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

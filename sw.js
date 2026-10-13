@@ -1,7 +1,7 @@
 /* Service worker do App de Contagem — deixa o app abrir sem internet.
    Estratégia: entrega o que está guardado na hora (rápido e offline) e atualiza
    a cópia em segundo plano quando há internet. Dados do Firebase NÃO passam por aqui. */
-var CACHE = "app-contagem-v1.9";
+var CACHE = "app-contagem-v1.10";
 var ARQUIVOS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", function (ev) {

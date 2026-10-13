@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>App de Contagem v1.9</title>
+<title>App de Contagem v1.10</title>
 <meta name="theme-color" content="#2a78d6" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -354,7 +354,7 @@
 <div class="appbar">
   <div class="appbar-inner">
     <span class="appbar-title">App de Contagem</span>
-    <span class="appbar-version">v1.9</span>
+    <span class="appbar-version">v1.10</span>
     <div class="toggle-group" id="ambienteSwitch" hidden>
       <button id="btnAmbienteProducao" class="active" type="button">Produção</button>
       <button id="btnAmbientePesquisa" type="button">Pesquisa</button>
@@ -1333,7 +1333,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function ensaioPayload(id) {
     var e = DATA.ensaios.find(function (x) { return x.id === id; });
     if (!e) return null;
-    return { nome: e.nome, createdAt: e.createdAt, linhas: e.linhas || [], contagens: e.contagens || [], updatedAt: new Date().toISOString() };
+    return { nome: e.nome, createdAt: e.createdAt, linhas: e.linhas || [], contagens: e.contagens || [], delL: e.delL || [], delC: e.delC || [], updatedAt: new Date().toISOString() };
   }
   function fbSendEnsaioNow(id) {
     var payload = ensaioPayload(id);
@@ -1373,6 +1373,50 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     try { pendingDeletes = JSON.parse(localStorage.getItem(pendingDeletesKey()) || "[]"); } catch (e) { pendingDeletes = []; }
   }
 
+  // Junta a cópia deste aparelho com a da nuvem SEM perder nada: contagem/fêmea/macho
+  // que só existe aqui (lançada sem internet) continua existindo e é enviada; o que
+  // só existe na nuvem (lançado por outro aparelho) entra aqui. Exclusões feitas em
+  // qualquer aparelho ficam registradas (delL = linhas, delC = contagens) pra o item
+  // excluído não "ressuscitar" na hora de juntar.
+  function unionIds(a, b) {
+    var seen = {}, out = [];
+    (a || []).concat(b || []).forEach(function (x) { if (!seen[x]) { seen[x] = true; out.push(x); } });
+    return out;
+  }
+  function mergeEnsaioDocs(local, remote, preferLocal) {
+    var delL = unionIds(local.delL, remote.delL);
+    var delC = unionIds(local.delC, remote.delC);
+    function mergeById(rem, loc, keep) {
+      var byId = {}, out = [];
+      (rem || []).forEach(function (x) { byId[x.id] = true; if (keep(x)) out.push(x); });
+      (loc || []).forEach(function (x) {
+        if (!byId[x.id]) { if (keep(x)) out.push(x); }
+        else if (preferLocal && keep(x)) {
+          for (var i = 0; i < out.length; i++) { if (out[i].id === x.id) { out[i] = x; break; } }
+        }
+      });
+      return out;
+    }
+    var dl = {}; delL.forEach(function (x) { dl[x] = true; });
+    var dc = {}; delC.forEach(function (x) { dc[x] = true; });
+    var out = {};
+    Object.keys(remote).forEach(function (k) { out[k] = remote[k]; });
+    out.id = remote.id || local.id;
+    out.nome = (preferLocal && local.nome) ? local.nome : (remote.nome || local.nome);
+    out.createdAt = remote.createdAt || local.createdAt;
+    out.linhas = mergeById(remote.linhas, local.linhas, function (x) { return !dl[x.id]; });
+    out.contagens = mergeById(remote.contagens, local.contagens, function (x) { return !dc[x.id] && !dl[x.linhaId]; });
+    out.delL = delL;
+    out.delC = delC;
+    return out;
+  }
+  function sameDocIds(a, b) {
+    function ids(arr) { return (arr || []).map(function (x) { return x.id; }).sort().join("|"); }
+    function plain(arr) { return (arr || []).slice().sort().join("|"); }
+    return ids(a.linhas) === ids(b.linhas) && ids(a.contagens) === ids(b.contagens) &&
+      plain(a.delL) === plain(b.delL) && plain(a.delC) === plain(b.delC);
+  }
+
   function syncNow(opts) {
     opts = opts || {};
     var statusEl = document.getElementById("syncNowStatus");
@@ -1396,9 +1440,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var merged = [];
       remoteList.forEach(function (re) {
         var st = fbPush[re.id];
-        // Se este aparelho ainda tem uma edição não confirmada, mantém a versão local
-        // (mais nova) em vez de sobrescrever com o que acabou de vir da nuvem.
-        merged.push((st && st.pending && localById[re.id]) ? localById[re.id] : re);
+        var le = localById[re.id];
+        if (!le) { merged.push(re); return; }
+        // Junta as duas cópias (nunca joga fora o que foi lançado sem internet).
+        var m = mergeEnsaioDocs(le, re, !!(st && st.pending));
+        merged.push(m);
+        // Se a junção tem algo que a nuvem ainda não tem, precisa ser enviada.
+        if (!sameDocIds(m, re)) { var st2 = fbPush[re.id] || (fbPush[re.id] = {}); st2.pending = true; }
       });
       DATA.ensaios.forEach(function (e) {
         if (!remoteById[e.id] && pendingDeletes.indexOf(e.id) === -1) {
@@ -1580,6 +1628,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (!e) return;
         e.linhas = (e.linhas || []).filter(function (x) { return x.id !== id; });
         e.contagens = (e.contagens || []).filter(function (x) { return x.linhaId !== id; });
+        e.delL = unionIds(e.delL, [id]);
         saveData();
         renderLinhas();
         renderContagemLinhaOptions();
@@ -1757,6 +1806,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         var e2 = currentEnsaio();
         if (!e2) return;
         e2.contagens = (e2.contagens || []).filter(function (x) { return x.id !== id; });
+        e2.delC = unionIds(e2.delC, [id]);
         saveData();
         renderChart();
         renderTable();

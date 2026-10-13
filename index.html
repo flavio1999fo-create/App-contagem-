@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>App de Contagem v1.10</title>
+<title>App de Contagem v1.11</title>
 <meta name="theme-color" content="#2a78d6" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -110,6 +110,7 @@
   .appbar-ambiente { margin-left: auto; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 2px; white-space: nowrap; }
   .appbar-ambiente.producao { background: color-mix(in srgb, var(--series-1) 18%, transparent); color: var(--series-1); }
   .appbar-ambiente.pesquisa { background: color-mix(in srgb, var(--series-2) 18%, transparent); color: var(--series-2); }
+  .pend-banner { background:#fff4e0; border:1px solid #e0a030; color:#7a4a00; font-size:13px; font-weight:600; padding:10px 12px; border-radius:4px; margin:8px 0; line-height:1.4; }
   .appbar-sync { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
   .appbar-user { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
   #ambienteSwitch button { font-size: 10px; padding: 5px 9px; }
@@ -354,7 +355,7 @@
 <div class="appbar">
   <div class="appbar-inner">
     <span class="appbar-title">App de Contagem</span>
-    <span class="appbar-version">v1.10</span>
+    <span class="appbar-version">v1.11</span>
     <div class="toggle-group" id="ambienteSwitch" hidden>
       <button id="btnAmbienteProducao" class="active" type="button">Produção</button>
       <button id="btnAmbientePesquisa" type="button">Pesquisa</button>
@@ -372,6 +373,7 @@
     <button class="btn-ghost" id="btnSyncNow" type="button">🔄 Sincronizar agora</button>
     <span id="syncNowStatus"></span>
   </div>
+  <div id="pendBanner" class="pend-banner" hidden></div>
 
   <div class="card">
     <div class="ensaio-bar">
@@ -504,6 +506,11 @@
       <div class="export-row">
         <button class="btn-ghost" id="btnBaixarGrafico" type="button">Baixar gráfico (PNG)</button>
         <button class="btn-ghost" id="btnBaixarExcel" type="button">Baixar tudo (Excel: contagens + gráfico)</button>
+      </div>
+      <div class="export-row">
+        <button class="btn-ghost" id="btnBackup" type="button">Baixar backup de segurança (.json)</button>
+        <button class="btn-ghost" id="btnRestaurar" type="button">Restaurar backup…</button>
+        <input type="file" id="fileRestaurar" accept=".json,application/json" hidden />
       </div>
       <div id="exportStatus" class="export-status"></div>
     </div>
@@ -1137,10 +1144,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (parsed && Array.isArray(parsed.ensaios)) DATA = parsed;
       }
     } catch (e) { console.warn("Falha ao ler dados locais:", e); }
+    loadConfirmed();
+    updatePendBanner();
   }
+  // ---- Contagens "confirmadas" na nuvem: guardado NO APARELHO (sobrevive a fechar o app).
+  // Tudo que está salvo aqui mas ainda não foi confirmado aparece num aviso laranja,
+  // pra ninguém achar que subiu quando não subiu.
+  var confirmed = {};
+  function confKey() { return state.ambiente === "pesquisa" ? "florescimentoConfirmadosV1" : "florescimentoConfirmadosV1_producao"; }
+  function loadConfirmed() {
+    try { confirmed = JSON.parse(localStorage.getItem(confKey()) || "{}") || {}; } catch (e) { confirmed = {}; }
+  }
+  function saveConfirmed() {
+    try { localStorage.setItem(confKey(), JSON.stringify(confirmed)); } catch (e) {}
+  }
+  function pendingCount() {
+    var n = 0;
+    ((DATA && DATA.ensaios) || []).forEach(function (e) {
+      (e.contagens || []).forEach(function (c) { if (!confirmed[c.id]) n++; });
+    });
+    return n;
+  }
+  function updatePendBanner() {
+    var el = document.getElementById("pendBanner");
+    if (!el) return;
+    var n = pendingCount();
+    if (!n) { el.hidden = true; return; }
+    el.hidden = false;
+    el.textContent = "⚠ " + n + (n === 1 ? " contagem ainda NÃO foi enviada" : " contagens ainda NÃO foram enviadas") +
+      " para a nuvem. Está salva neste celular — abra o app com internet e espere o selo ficar 🟢 Sincronizado.";
+  }
+
   function saveData() {
     try { localStorage.setItem(dataKey(), JSON.stringify(DATA)); }
     catch (e) { console.warn("Falha ao salvar dados locais:", e); }
+    updatePendBanner();
   }
 
   var state = {
@@ -1340,6 +1378,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var st = fbPush[id] || (fbPush[id] = {});
     if (!payload) { st.inFlight = false; st.pending = false; return Promise.resolve(); }
     return fbSetDoc(fbCol() + "/" + id, payload).then(function () {
+      (payload.contagens || []).forEach(function (c) { confirmed[c.id] = true; });
+      saveConfirmed();
+      updatePendBanner();
       if (st.queued) { st.queued = false; return fbSendEnsaioNow(id); }
       st.inFlight = false; st.pending = false;
     }).catch(function (err) {
@@ -1432,6 +1473,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       })).then(function () { return fbListCollection(fbCol()); });
     }).then(function (remoteList) {
       remoteList = remoteList.filter(function (e) { return pendingDeletes.indexOf(e.id) === -1; });
+      remoteList.forEach(function (re) { (re.contagens || []).forEach(function (c) { confirmed[c.id] = true; }); });
+      saveConfirmed();
       var remoteById = {};
       remoteList.forEach(function (e) { remoteById[e.id] = e; });
       var localById = {};
@@ -2068,6 +2111,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return xlsxLib.loading;
   }
 
+  /* ====================== Backup de segurança ====================== */
+
+  document.getElementById("btnBackup").addEventListener("click", function () {
+    var pacote = { app: "app-de-contagem", versao: "1.11", ambiente: state.ambiente, geradoEm: new Date().toISOString(), ensaios: DATA.ensaios };
+    var blob = new Blob([JSON.stringify(pacote)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    downloadDataUrl(url, "backup-contagem-" + state.ambiente + "-" + todayStr() + ".json");
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    showToast("Backup baixado.", "good");
+  });
+  document.getElementById("btnRestaurar").addEventListener("click", function () {
+    document.getElementById("fileRestaurar").click();
+  });
+  document.getElementById("fileRestaurar").addEventListener("change", function (ev) {
+    var f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var j;
+      try { j = JSON.parse(r.result); } catch (e) { j = null; }
+      if (!j || j.app !== "app-de-contagem" || !Array.isArray(j.ensaios)) { showToast("Esse arquivo não é um backup do App de Contagem.", "bad"); return; }
+      if (j.ambiente && j.ambiente !== state.ambiente) { showToast("Esse backup é do ambiente " + (j.ambiente === "pesquisa" ? "Pesquisa" : "Produção") + ". Troque de ambiente e tente de novo.", "bad"); return; }
+      j.ensaios.forEach(function (be) {
+        var idx = -1;
+        DATA.ensaios.forEach(function (x, i) { if (x.id === be.id) idx = i; });
+        if (idx >= 0) DATA.ensaios[idx] = mergeEnsaioDocs(DATA.ensaios[idx], be, true);
+        else DATA.ensaios.push(be);
+      });
+      saveData();
+      renderEnsaioSelect();
+      j.ensaios.forEach(function (be) { fbPushEnsaio(be.id); });
+      showToast("Backup restaurado (nada foi apagado, só somado).", "good");
+    };
+    r.readAsText(f);
+  });
+
   document.getElementById("btnBaixarGrafico").addEventListener("click", function () {
     if (!chart) {
       showToast("Gere o gráfico primeiro (lance ao menos uma contagem).", "bad");
@@ -2155,6 +2235,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   /* ====================== Boot ====================== */
 
   function boot() {
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     loadUsersCache();
     var session = loadSession();
     if (session && session.username) {

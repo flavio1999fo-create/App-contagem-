@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>App de Contagem v1.11</title>
+<title>App de Contagem v1.12</title>
 <meta name="theme-color" content="#2a78d6" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -240,6 +240,8 @@
   .series-check:hover { background: var(--surface-1); }
   .series-check input[type=checkbox] { width:auto; margin:0; accent-color: var(--series-1); flex:none; }
   .series-swatch { width:12px; height:12px; border-radius:2px; flex:none; }
+  .series-pk { margin-left:auto; font-weight:700; font-size:12px; white-space:nowrap; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .series-lb { flex:1; min-width:0; overflow-wrap:anywhere; }
   .series-check-empty { color: var(--text-muted); font-size:13px; padding: 8px 4px; }
 
   .chart-wrap { position: relative; height: 320px; }
@@ -355,7 +357,7 @@
 <div class="appbar">
   <div class="appbar-inner">
     <span class="appbar-title">App de Contagem</span>
-    <span class="appbar-version">v1.11</span>
+    <span class="appbar-version">v1.12</span>
     <div class="toggle-group" id="ambienteSwitch" hidden>
       <button id="btnAmbienteProducao" class="active" type="button">Produção</button>
       <button id="btnAmbientePesquisa" type="button">Pesquisa</button>
@@ -491,6 +493,12 @@
             <button class="btn-ghost" id="btnMarcarTodas" type="button">Marcar todas</button>
             <button class="btn-ghost" id="btnDesmarcarTodas" type="button">Desmarcar todas</button>
           </div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+          <button class="btn-ghost" id="btnSoFemeas" type="button">Só fêmeas</button>
+          <button class="btn-ghost" id="btnSoMachos" type="button">Só machos</button>
+          <button class="btn-ghost" id="btnSoFeminino" type="button">Só feminino</button>
+          <button class="btn-ghost" id="btnSoMasculino" type="button">Só masculino</button>
         </div>
         <div id="seriesPicker" class="series-picker"></div>
       </div>
@@ -1880,6 +1888,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     renderChart();
   });
 
+  function soSeries(pred) {
+    buildSeries().forEach(function (s) { state.seriesOff[s.key] = !pred(s); });
+    renderChart();
+  }
+  document.getElementById("btnSoFemeas").addEventListener("click", function () { soSeries(function (s) { return s.isFem; }); });
+  document.getElementById("btnSoMachos").addEventListener("click", function () { soSeries(function (s) { return !s.isFem; }); });
+  document.getElementById("btnSoFeminino").addEventListener("click", function () { soSeries(function (s) { return !s.masc; }); });
+  document.getElementById("btnSoMasculino").addEventListener("click", function () { soSeries(function (s) { return s.masc; }); });
+
   function buildSeries() {
     var e = currentEnsaio();
     var linhas = e ? (e.linhas || []) : [];
@@ -1902,6 +1919,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var series = [];
     var colorIdx = 0;
+    var linhaColor = {};
     sortedLinhaIds.forEach(function (lid) {
       ["Feminino", "Masculino"].forEach(function (tipoFlor) {
         var group = byKey[lid + "|" + tipoFlor];
@@ -1922,11 +1940,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           return { x: x, y: c.contagem, data: c.data };
         }).filter(Boolean);
         if (xy.length === 0) return;
+        if (linhaColor[lid] === undefined) linhaColor[lid] = colorForIndex(colorIdx++);
+        var pico = xy[0];
+        xy.forEach(function (p) { if (p.y > pico.y) pico = p; });
         series.push({
           key: lid + "|" + tipoFlor,
           linhaId: lid,
           label: serieLabel(l, tipoFlor),
-          color: colorForIndex(colorIdx++),
+          color: linhaColor[lid],
+          isFem: l.tipo !== "Macho",
+          masc: l.tipo === "Macho" && tipoFlor === "Masculino",
+          pico: pico,
           points: xy
         });
       });
@@ -1980,6 +2004,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         pointRadius: 4,
         pointHoverRadius: 6,
         borderWidth: 2,
+        borderDash: s.masc ? [8, 5] : [],
         tension: 0.15,
         fill: false
       };
@@ -2062,8 +2087,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       item.className = "series-check";
       item.innerHTML =
         '<input type="checkbox" ' + (checked ? "checked" : "") + ' />' +
-        '<span class="series-swatch" style="background:' + s.color + '"></span>' +
-        '<span>' + escapeHtml(s.label) + "</span>";
+        '<span class="series-swatch" style="width:22px;height:0;border-radius:0;background:none;border-top:4px ' + (s.masc ? "dashed " : "solid ") + s.color + '"></span>' +
+        '<span class="series-lb">' + escapeHtml(s.label) + "</span>" +
+        '<span class="series-pk">pico ' + s.pico.y + " · " + (state.eixo === "dap" ? "DAP " + Math.round(s.pico.x) : fmtDateShort(s.pico.data)) + "</span>";
       item.querySelector("input").addEventListener("change", function (ev) {
         state.seriesOff[s.key] = !ev.target.checked;
         renderChart();
@@ -2114,7 +2140,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   /* ====================== Backup de segurança ====================== */
 
   document.getElementById("btnBackup").addEventListener("click", function () {
-    var pacote = { app: "app-de-contagem", versao: "1.11", ambiente: state.ambiente, geradoEm: new Date().toISOString(), ensaios: DATA.ensaios };
+    var pacote = { app: "app-de-contagem", versao: "1.12", ambiente: state.ambiente, geradoEm: new Date().toISOString(), ensaios: DATA.ensaios };
     var blob = new Blob([JSON.stringify(pacote)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     downloadDataUrl(url, "backup-contagem-" + state.ambiente + "-" + todayStr() + ".json");
